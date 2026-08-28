@@ -1,0 +1,140 @@
+CHANGELOG.md
+  h_e36c3d654edcfe 1-16
+LICENSE
+  h_e36c3d654edcfe 1-202
+README.md
+  h_e36c3d654edcfe 1-61
+config/ad-pet.example.json
+  h_e36c3d654edcfe 1-168
+cordis.patch.yml
+  h_e36c3d654edcfe 1-2
+lib/types/client.d.ts
+  h_e36c3d654edcfe 1-2
+lib/types/client.d.ts.map
+  h_e36c3d654edcfe 1
+lib/types/client.js
+  h_e36c3d654edcfe 1
+lib/types/client/index.d.ts
+  h_e36c3d654edcfe 1-4
+lib/types/client/index.d.ts.map
+  h_e36c3d654edcfe 1
+lib/types/client/index.js
+  h_e36c3d654edcfe 1-201
+lib/types/config.d.ts
+  h_e36c3d654edcfe 1-147
+lib/types/config.d.ts.map
+  h_e36c3d654edcfe 1
+lib/types/config.js
+  h_e36c3d654edcfe 1-61
+lib/types/constants.d.ts
+  h_e36c3d654edcfe 1-15
+lib/types/constants.d.ts.map
+  h_e36c3d654edcfe 1
+lib/types/constants.js
+  h_e36c3d654edcfe 1-14
+lib/types/http.d.ts
+  h_e36c3d654edcfe 1-43
+lib/types/http.d.ts.map
+  h_e36c3d654edcfe 1
+lib/types/http.js
+  h_e36c3d654edcfe 1-92
+lib/types/index.d.ts
+  h_e36c3d654edcfe 1-12
+lib/types/index.d.ts.map
+  h_e36c3d654edcfe 1
+lib/types/index.js
+  h_e36c3d654edcfe 1-25
+lib/types/locales/en.d.ts
+  h_e36c3d654edcfe 1-27
+lib/types/locales/en.d.ts.map
+  h_e36c3d654edcfe 1
+lib/types/locales/en.js
+  h_e36c3d654edcfe 1-26
+lib/types/locales/index.d.ts
+  h_e36c3d654edcfe 1-13
+lib/types/locales/index.d.ts.map
+  h_e36c3d654edcfe 1
+lib/types/locales/index.js
+  h_e36c3d654edcfe 1-14
+lib/types/locales/zh.d.ts
+  h_e36c3d654edcfe 1-27
+lib/types/locales/zh.d.ts.map
+  h_e36c3d654edcfe 1
+lib/types/locales/zh.js
+  h_e36c3d654edcfe 1-26
+lib/types/messages.d.ts
+  h_e36c3d654edcfe 1-17
+lib/types/messages.d.ts.map
+  h_e36c3d654edcfe 1
+lib/types/messages.js
+  h_e36c3d654edcfe 1-16
+lib/types/mount-once.d.ts
+  h_e36c3d654edcfe 1-25
+lib/types/mount-once.d.ts.map
+  h_e36c3d654edcfe 1
+lib/types/mount-once.js
+  h_e36c3d654edcfe 1-42
+lib/types/routes.d.ts
+  h_e36c3d654edcfe 1-5
+lib/types/routes.d.ts.map
+  h_e36c3d654edcfe 1
+lib/types/routes.js
+  h_e36c3d654edcfe 1-115
+lib/types/service.d.ts
+  h_e36c3d654edcfe 1-89
+lib/types/service.d.ts.map
+  h_e36c3d654edcfe 1
+lib/types/service.js
+  h_e36c3d654edcfe 1-320
+package.json
+  h_e36c3d654edcfe 1-85
+src/client.ts
+  h_e36c3d654edcfe 1
+src/client/index.tsx
+  h_e36c3d654edcfe 1-213
+src/config.ts
+  h_e36c3d654edcfe 1-187
+src/constants.ts
+  h_e36c3d654edcfe 1-14
+src/http.ts
+  h_e36c3d654edcfe 1-105
+src/index.ts
+  h_e36c3d654edcfe 1-40
+src/locales/en.ts
+  h_e36c3d654edcfe 1-27
+src/locales/index.ts
+  h_e36c3d654edcfe 1-18
+src/locales/zh.ts
+  h_e36c3d654edcfe 1-27
+src/messages.ts
+  h_e36c3d654edcfe 1-16
+src/mount-once.ts
+  h_e36c3d654edcfe 1-48
+src/routes.ts
+  h_e36c3d654edcfe 1-92
+src/service.ts
+  h_e36c3d654edcfe 1-348
+test/config.test.ts
+  h_e36c3d654edcfe 1-24
+tsconfig.json
+  h_e36c3d654edcfe 1-28
+tsconfig.test.json
+  h_e36c3d654edcfe 1-31
+tsconfig.vitest.json
+  h_e36c3d654edcfe 1-20
+tsdown.config.ts
+  h_e36c3d654edcfe 1-2
+vitest.config.ts
+  h_e36c3d654edcfe 1-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "35d2a24e3e890bf525d1d9ddd19a8bbc1637e294",
+  "prompts": {},
+  "humans": {
+    "h_e36c3d654edcfe": {
+      "author": "nnnet <21066097+nnnet@users.noreply.github.com>"
+    }
+  }
+}
