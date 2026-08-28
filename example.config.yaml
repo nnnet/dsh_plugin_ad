@@ -1,0 +1,85 @@
+# Example dsh-ad configuration.
+#
+# Two sources are shown:
+#  1. "marketplace" — a full example: product-card feed (video/gif/text),
+#     a buyer-cabinet login, and an AI shopping-assistant chat endpoint.
+#  2. "static-banner" — a minimal example: a single rotating image feed
+#     with no auth and no chat.
+#
+# Secrets: prefer the `*Env` fields (read from process.env at request time)
+# over the plain `login`/`password`/`apiKey`/`token` fields. The plain
+# fields exist for local experimentation; do not commit real credentials
+# in that form.
+
+enabled: true
+activeSourceId: marketplace
+
+sources:
+  - id: marketplace
+    name: "Acme Marketplace"
+    enabled: true
+    contentTypes: [video, gif, text, message, chat]
+
+    # Buyer-cabinet credentials for the feed endpoint below. Set these
+    # environment variables in the host process instead of editing this
+    # file: ACME_LOGIN, ACME_PASSWORD.
+    auth:
+      loginEnv: ACME_LOGIN
+      passwordEnv: ACME_PASSWORD
+      # apiKeyEnv / tokenEnv also supported; use whichever the backend expects.
+      extra:
+        clientId: "dsh-ad-widget"
+
+    # Rotating product-card feed. `{cursor}` is substituted per poll from
+    # runtime context if your backend supports pagination this way; static
+    # feeds can ignore it.
+    feed:
+      url: "https://api.acme-marketplace.example/v1/ad-feed"
+      method: GET
+      headers:
+        Accept: "application/json"
+      params:
+        placement: "companion-widget"
+        limit: "20"
+      responsePath: "data.items"
+      timeoutMs: 8000
+    pollIntervalMs: 60000
+
+    # {itemId} and {clickUrl} are filled from the item the widget is
+    # currently showing.
+    clickThroughUrl: "https://acme-marketplace.example/item/{itemId}?utm_source=dsh-ad"
+
+    # AI shopping-assistant chat. Falls back to `auth` above if `chat.auth`
+    # is omitted; set it separately when chat uses a different identity.
+    chat:
+      endpoint:
+        # For streaming: point this at the backend's streaming route (often
+        # a distinct path/flag from the non-streaming one above).
+        url: "https://api.acme-marketplace.example/v1/assistant/chat/stream"
+        method: POST
+        body:
+          message: "{message}"
+          history: "{history}"
+          stream: true
+        # responsePath/timeoutMs are unused in streaming mode; kept for the
+        # non-streaming fallback if you flip `streaming: false`.
+        responsePath: "data"
+        timeoutMs: 30000
+      replyPath: "reply"
+      # v0.2: proxy the assistant reply as live tokens instead of one JSON
+      # blob. `streamFormat: sse` expects `data: {"delta": "..."}` lines
+      # (OpenAI-style); use `text` for a backend that just writes raw text
+      # chunks to the HTTP response body.
+      streaming: true
+      streamFormat: sse
+      streamTokenPath: "delta"
+
+  - id: static-banner
+    name: "House Ads"
+    enabled: true
+    contentTypes: [image, gif]
+    feed:
+      url: "https://cdn.example.com/house-ads/feed.json"
+      responsePath: "banners"
+    pollIntervalMs: 300000
+    clickThroughUrl: "{clickUrl}"
