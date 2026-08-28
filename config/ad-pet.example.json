@@ -1,0 +1,168 @@
+{
+  "enabled": true,
+  "source": "marketplace",
+  "pollIntervalMs": 60000,
+  "targeting": {
+    "locale": "en",
+    "path": "/shop",
+    "tags": ["commerce"]
+  },
+  "sources": [
+    {
+      "id": "marketplace",
+      "name": { "en": "Example Marketplace", "zh": "示例商城" },
+      "baseUrl": "https://ads.example.com",
+      "allowHosts": ["ads.example.com", "cdn.example.com", "shop.example.com"],
+      "auth": {
+        "username": { "env": "AD_MARKETPLACE_USERNAME" },
+        "password": { "env": "AD_MARKETPLACE_PASSWORD" }
+      },
+      "campaign": {
+        "placement": "dsh-pet",
+        "campaignIdPath": "campaign.id",
+        "creativeIdPath": "id",
+        "variantPath": "experiment.variant",
+        "priority": 100,
+        "weight": 10
+      },
+      "targeting": {
+        "locales": ["en", "zh"],
+        "paths": ["/shop", "/products"],
+        "excludePaths": ["/checkout"],
+        "tags": ["commerce"],
+        "excludeTags": ["no-ads"]
+      },
+      "tracking": {
+        "action": "track",
+        "impressionEvent": "impression",
+        "clickEvent": "click",
+        "conversionEvent": "conversion",
+        "frequencyCap": { "maxImpressions": 3, "windowMs": 3600000 }
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/campaigns",
+        "query": {
+          "placement": "dsh-pet",
+          "locale": "{{locale}}",
+          "path": "{{path}}"
+        }
+      },
+      "mapping": {
+        "itemsPath": "data.items",
+        "idPath": "id",
+        "productIdPath": "product.id",
+        "skuPath": "product.sku",
+        "typePath": "creative.type",
+        "titlePath": "title",
+        "textPath": "copy",
+        "descriptionPath": "description",
+        "brandPath": "product.brand",
+        "pricePath": "product.price.value",
+        "originalPricePath": "product.price.original",
+        "currencyPath": "product.price.currency",
+        "discountPath": "product.discountPercent",
+        "ratingPath": "product.rating",
+        "badgePath": "badge",
+        "imagePath": "media.image",
+        "galleryPath": "media.gallery",
+        "mediaPath": "media.video",
+        "urlPath": "landing.url",
+        "assistantIdPath": "assistant.id",
+        "detailsActionIdPath": "actions.details",
+        "raw": true
+      },
+      "commerce": {
+        "detailsAction": "details",
+        "cartAction": "addToCart",
+        "checkoutAction": "checkout",
+        "trackAction": "track"
+      },
+      "actions": {
+        "details": {
+          "method": "GET",
+          "path": "/api/v1/products/{{payload.productId}}"
+        },
+        "addToCart": {
+          "method": "POST",
+          "path": "/api/v1/cart/items",
+          "body": {
+            "productId": "{{payload.productId}}",
+            "sku": "{{payload.sku}}",
+            "quantity": "{{payload.quantity}}",
+            "locale": "{{locale}}"
+          }
+        },
+        "checkout": {
+          "method": "POST",
+          "path": "/api/v1/checkout/session",
+          "body": {
+            "productId": "{{payload.productId}}",
+            "quantity": "{{payload.quantity}}",
+            "locale": "{{locale}}"
+          }
+        },
+        "track": {
+          "method": "POST",
+          "path": "/api/v1/events",
+          "body": {
+            "event": "{{payload.event}}",
+            "adId": "{{payload.adId}}",
+            "campaignId": "{{payload.campaignId}}",
+            "creativeId": "{{payload.creativeId}}",
+            "productId": "{{payload.productId}}",
+            "sessionId": "{{payload.sessionId}}",
+            "locale": "{{locale}}"
+          }
+        },
+        "chat": {
+          "method": "POST",
+          "path": "/api/v1/assistant/chat",
+          "stream": true,
+          "body": {
+            "assistantId": "{{payload.assistantId}}",
+            "message": "{{payload.message}}",
+            "history": "{{payload.history}}",
+            "sessionId": "{{payload.sessionId}}",
+            "productId": "{{payload.productId}}",
+            "locale": "{{locale}}"
+          }
+        }
+      },
+      "assistant": {
+        "action": "chat",
+        "messageField": "message",
+        "historyField": "history",
+        "sessionField": "sessionId"
+      },
+      "metadata": {
+        "vertical": "marketplace",
+        "supportsVideo": true,
+        "supportsGif": true,
+        "supportsAssistant": true,
+        "supportsCart": true,
+        "supportsCheckout": true,
+        "privacy": "anonymous-session-only"
+      }
+    },
+    {
+      "id": "fallback-network",
+      "name": { "en": "Fallback Ad Network", "zh": "备用广告网络" },
+      "baseUrl": "https://fallback.example.com",
+      "allowHosts": ["fallback.example.com", "cdn.fallback.example.com"],
+      "campaign": { "placement": "dsh-pet", "priority": 10, "weight": 1 },
+      "request": { "method": "GET", "path": "/v1/ads", "query": { "locale": "{{locale}}", "path": "{{path}}" } },
+      "mapping": {
+        "itemsPath": "ads",
+        "idPath": "id",
+        "typePath": "type",
+        "titlePath": "title",
+        "textPath": "text",
+        "imagePath": "image",
+        "mediaPath": "video",
+        "urlPath": "clickUrl",
+        "raw": true
+      }
+    }
+  ]
+}
