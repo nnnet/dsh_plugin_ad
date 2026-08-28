@@ -1,0 +1,2 @@
+# Keep this patch aligned with the host profile that loads the plugin.
+# The plugin is intentionally self-contained: no source changes in dsh-web are required.

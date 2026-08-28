@@ -1,0 +1,61 @@
+{
+  "enabled": true,
+  "source": "marketplace",
+  "sources": [
+    {
+      "id": "marketplace",
+      "name": { "en": "Example Marketplace", "zh": "示例商城" },
+      "baseUrl": "https://ads.example.com",
+      "allowHosts": ["ads.example.com", "cdn.example.com", "shop.example.com"],
+      "auth": {
+        "username": { "env": "AD_MARKETPLACE_USERNAME" },
+        "password": { "env": "AD_MARKETPLACE_PASSWORD" }
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/campaigns",
+        "query": { "placement": "dsh-pet", "locale": "{{locale}}" }
+      },
+      "mapping": {
+        "itemsPath": "data.items",
+        "idPath": "id",
+        "typePath": "creative.type",
+        "titlePath": "title",
+        "textPath": "copy",
+        "descriptionPath": "description",
+        "imagePath": "media.image",
+        "mediaPath": "media.video",
+        "urlPath": "landing.url",
+        "assistantIdPath": "assistant.id",
+        "raw": true
+      },
+      "actions": {
+        "chat": {
+          "method": "POST",
+          "path": "/api/v1/assistant/chat",
+          "body": {
+            "assistantId": "{{payload.assistantId}}",
+            "message": "{{payload.message}}",
+            "history": "{{payload.history}}",
+            "locale": "{{locale}}"
+          }
+        },
+        "details": {
+          "method": "GET",
+          "path": "/api/v1/products/{{payload.productId}}"
+        }
+      },
+      "assistant": {
+        "action": "chat",
+        "messageField": "message",
+        "historyField": "history"
+      },
+      "metadata": {
+        "vertical": "marketplace",
+        "supportsVideo": true,
+        "supportsGif": true,
+        "supportsAssistant": true
+      }
+    }
+  ]
+}
