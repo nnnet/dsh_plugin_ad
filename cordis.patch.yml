@@ -1,0 +1,8 @@
+# dsh-ad bundle patch: inserts the ad plugin row into the web plugin roster.
+# Without this, `dsh plugin add` records the npm dependency but does not
+# insert the plugin into the cordis composition tree — the host skips the
+# package at startup, `apply` never runs, no routes are registered, and the
+# widget has no API to talk to. The bundle is the official dsh plugin shape.
+- insert:
+    - id: ad
+      name: dsh_plugin_ad

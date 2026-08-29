@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@deepseek-ai/dsh-client-runtime/*": ["/tmp/claude-1000/pet2/home/uadmin/.dsh/profiles/web/NM/@linxin666/dsh-web-all/NM/@linxin666/dsh-pet/NM/@deepseek-ai/dsh-client-runtime/*"],
+      "@deepseek-ai/dsh-client-ui-settings/*": ["/tmp/claude-1000/pet2/home/uadmin/.dsh/profiles/web/NM/@linxin666/dsh-web-all/NM/@linxin666/dsh-pet/NM/@deepseek-ai/dsh-client-ui-settings/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "test"]
+}

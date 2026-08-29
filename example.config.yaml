@@ -1,0 +1,87 @@
+# Example dsh-ad configuration.
+#
+# Two real-world sources are shown:
+#   1. "csgo-market"  — a CS:GO skin marketplace driven by market.csgo.com's
+#      public price feed. Demonstrates buyer-cabinet credentials, the
+#      csgo.com image CDN URL pattern, and the marketplace renderer.
+#   2. "house-banner" — a minimal example: a single rotating image feed
+#      with no auth and no chat.
+#
+# Secrets: prefer the `*Env` fields (read from process.env at request time)
+# over the plain `login`/`password`/`apiKey`/`token` fields. The plain
+# fields exist for local experimentation; do not commit real credentials
+# in that form.
+#
+# If you'd rather skip the YAML for CS:GO and use the built-in preset
+# (src/sources/csgo.ts), call `buildCsgoMarketSource({ currency, imageWidth,
+# loginEnv, passwordEnv, ... })` from your code and merge the result into
+# `sources[]`.
+
+enabled: true
+activeSourceId: csgo-market
+
+sources:
+  - id: csgo-market
+    name: "CS:GO Market"
+    enabled: true
+    contentTypes: [image, product, chat]
+
+    # Host allowlist: only csgo.com is allowed. Outbound requests to
+    # anything else will be rejected before they are sent.
+    allowHosts:
+      - market.csgo.com
+      - cdn.csgo.com
+      - cdn2.csgo.com
+
+    # Buyer-cabinet credentials for the marketplace feed. Set these env
+    # vars in the host process instead of editing this file:
+    #   CSGO_LOGIN, CSGO_PASSWORD
+    auth:
+      loginEnv: CSGO_LOGIN
+      passwordEnv: CSGO_PASSWORD
+      extra:
+        clientId: "dsh-ad-widget"
+
+    # CS:GO price feed — `https://market.csgo.com/api/v2/prices/RUB.json`
+    # returns a flat `{ "<hash_name>": <price_cents>, ... }` map. The
+    # adapter recognizes the `__HASH_NAME__` / `__PRICE__` / `__BASE__`
+    # sentinels in the mapping and rebuilds each entry into a
+    # marketplace product automatically.
+    feed:
+      url: "https://market.csgo.com/api/v2/prices/RUB.json"
+      method: GET
+      headers:
+        Accept: "application/json"
+        User-Agent: "dsh-ad/0.2 (+https://github.com/nnnet/dsh_plugin_ad)"
+      timeoutMs: 8000
+    pollIntervalMs: 60000
+    maxResponseBytes: 10485760
+
+    mapping:
+      id: "__HASH_NAME__"
+      title: "__HASH_NAME__"
+      priceAmount: "__PRICE__"
+      imageBaseUrl: "__BASE__"
+
+    clickThroughUrl: "https://market.csgo.com/item/{itemId}?utm_source=dsh-ad"
+
+    # targeting and frequencyCap intentionally omitted so the source is
+    # eligible everywhere on every page from the first impression. The
+    # public price feed at /api/v2/prices/RUB.json does NOT require the
+    # buyer-cabinet login for read access; auth is only needed for
+    # buy/sell/order endpoints.
+
+    campaign:
+      id: csgo-market-rotator
+      placement: dsh-ad
+      priority: 100
+      weight: 10
+
+    tracking:
+      impressionUrl: "https://market.csgo.com/api/v2/track/impression"
+      clickUrl: "https://market.csgo.com/api/v2/track/click"
+
+    extra:
+      __csgoImageWidth: 458
+      __csgoCurrency: RUB
+
