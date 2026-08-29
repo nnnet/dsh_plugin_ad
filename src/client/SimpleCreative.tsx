@@ -16,9 +16,15 @@ function openClickThrough(url: string | undefined): void {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-export function SimpleCreative({ item }: { item: AdItemView }): React.ReactElement {
+export function SimpleCreative({ item, onClick: onClickProp }: {
+  item: AdItemView
+  onClick?: () => void
+}): React.ReactElement {
   const clickable = item.clickUrl !== undefined && item.clickUrl !== ''
-  const onClick = (): void => { openClickThrough(item.clickUrl) }
+  const onClick = (): void => {
+    if (onClickProp !== undefined) { onClickProp(); return }
+    openClickThrough(item.clickUrl)
+  }
 
   switch (item.type) {
     case 'video':

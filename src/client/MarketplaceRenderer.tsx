@@ -34,13 +34,24 @@ export function MarketplaceRenderer({
   campaignLabel,
   onAddToCart,
   onOpenChat,
+  onClickThrough,
 }: {
   item: AdItemView
   /** Optional source-level campaign label, shown as a small badge in the corner. */
   campaignLabel?: string
   onAddToCart: (item: AdItemView) => void
   onOpenChat: () => void
+  /**
+   * Optional widget-level click-through. When provided, the carousel
+   * activation prefers this handler (so the widget can run its own
+   * impression/click beacon before opening the destination).
+   */
+  onClickThrough?: () => void
 }): React.ReactElement {
+  const activate = (): void => {
+    if (onClickThrough !== undefined) { onClickThrough(); return }
+    openClickThrough(item.clickUrl)
+  }
   return (
     <div className={styles.productCard} data-renderer="marketplace">
       {campaignLabel !== undefined && (
@@ -52,7 +63,7 @@ export function MarketplaceRenderer({
         <ProductCarousel
           media={item.media}
           countLabel={t('ad.product.galleryCount', { count: item.media.length })}
-          onActivate={() => { openClickThrough(item.clickUrl) }}
+          onActivate={activate}
         />
       )}
       <div className={styles.productBody}>

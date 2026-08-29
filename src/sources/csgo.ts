@@ -42,7 +42,7 @@ export interface CsgoMarketOptions {
   loginEnv?: string
   /** Override the env var the host reads for the buyer's password. */
   passwordEnv?: string
-  /** Max items the host will keep in cache. Default 50. */
+  /** Max items to keep in rotation. Default 500. */
   maxItems?: number
   /** Poll interval (ms). Default 60000. */
   pollIntervalMs?: number
@@ -75,8 +75,11 @@ export function buildCsgoMarketSource(opts: CsgoMarketOptions = {}): AdSourceCon
     contentTypes: ['image', 'product', 'chat'],
     allowHosts: ['market.csgo.com', 'cdn.csgo.com', 'cdn2.csgo.com'],
     allowPrivateNetwork: false,
-    maxResponseBytes: 1024 * 1024,
+    // The full CS:GO price feed (RUB) is ~6 MiB; cap at 10 MiB to leave
+    // headroom for future item additions without re-bumping this.
+    maxResponseBytes: 10 * 1024 * 1024,
     pollIntervalMs: opts.pollIntervalMs ?? 60_000,
+    maxItems: opts.maxItems ?? 500,
     auth: {
       loginEnv,
       passwordEnv,
@@ -103,7 +106,12 @@ export function buildCsgoMarketSource(opts: CsgoMarketOptions = {}): AdSourceCon
       imageBaseUrl: '__BASE__',
     },
     clickThroughUrl: `https://market.csgo.com/item/{itemId}?utm_source=dsh-ad`,
-    frequencyCap: opts.frequencyCap ?? { maxImpressions: 5, windowMs: 600_000 },
+    // `frequencyCap` is opt-in: setting it through `opts.frequencyCap` is
+    // the only way to enable it. The previous v0.6 default (5 / 10 min)
+    // made the widget go silent after ~2.5 minutes of rotation, which
+    // users read as "the source has no items" — disabling the default
+    // keeps the rotation live out of the box.
+    ...(opts.frequencyCap !== undefined ? { frequencyCap: opts.frequencyCap } : {}),
     targeting: {
       ...(opts.targetingLocales !== undefined ? { locales: opts.targetingLocales } : {}),
       ...(opts.targetingPaths !== undefined ? { paths: opts.targetingPaths } : {}),

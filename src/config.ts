@@ -25,7 +25,8 @@ import z from 'schemastery'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve as resolvePath } from 'node:path'
 import yaml from 'js-yaml'
-import { ALL_CONTENT_TYPES, DEFAULT_CONTENT_TYPES, DEFAULT_POLL_MS, MAX_POLL_MS, MIN_POLL_MS } from './constants.ts'
+import { ALL_CONTENT_TYPES, DEFAULT_CONTENT_TYPES, DEFAULT_MAX_ITEMS, DEFAULT_POLL_MS, MAX_FEED_ITEMS, MAX_POLL_MS, MIN_POLL_MS } from './constants.ts'
+import type { AdItem } from './adapter.ts'
 
 /** Content shapes an ad source can hand back. A source may support several. */
 export type AdContentType = (typeof ALL_CONTENT_TYPES)[number]
@@ -144,6 +145,18 @@ export interface AdSourceConfig {
   enabled?: boolean
   /** Which content shapes this source is expected to return. */
   contentTypes: AdContentType[]
+  /**
+   * Max items the host will keep in rotation from this source. Default 500
+   * (was 50 in v0.6). Clamped at the global ceiling (5_000) — sources that
+   * need more should narrow the feed server-side.
+   */
+  maxItems?: number
+  /**
+   * Inline static list of items (one-shot, no `feed` polling). Used for
+   * sources like a small set of hosted videos where polling an endpoint
+   * is overkill. When present, takes precedence over `feed`.
+   */
+  staticItems?: AdItem[]
   /**
    * How to pull the rotating feed of creatives/cards. Omit for a
    * chat-only source.
@@ -280,6 +293,25 @@ export interface AdConfig {
   /** id of the source shown by default; falls back to the first entry. */
   activeSourceId?: string
   enabled?: boolean
+  /**
+   * Widget appearance — applied at startup; live edits go through the
+   * `ad` settings card (Pet-style). All fields are optional; the schema
+   * applies sensible defaults at validation time.
+   */
+  widget?: {
+    /** Master switch (false hides the entire plugin). */
+    visible?: boolean
+    /** Whether the widget is currently shown (Pet's `enabled`). */
+    enabled?: boolean
+    /** Show campaign badge in the corner (Pet's `decorationEnabled`). */
+    decorationEnabled?: boolean
+    /** Width (px) of the widget surface. */
+    size?: number
+    /** Inset from the viewport's right edge (px). Set by drag-and-drop. */
+    right?: number
+    /** Inset from the viewport's bottom edge (px). Set by drag-and-drop. */
+    bottom?: number
+  }
 }
 
 // --- Schemastery validation schemas ---------------------------------------
@@ -314,6 +346,8 @@ export const adSourceSchema: z<AdSourceConfig> = z.object({
   name: z.string().required(),
   enabled: z.boolean().default(true),
   contentTypes: z.array(contentTypeSchema).default([...DEFAULT_CONTENT_TYPES]),
+  maxItems: z.number().min(1).max(MAX_FEED_ITEMS).default(DEFAULT_MAX_ITEMS),
+  staticItems: z.array(z.any()).default([]),
   feed: endpointSchema,
   clickThroughUrl: z.string(),
   chat: z.object({
@@ -382,6 +416,14 @@ export const adConfigSchema: z<AdConfig> = z.object({
   sources: z.array(adSourceSchema).default([]),
   activeSourceId: z.string(),
   enabled: z.boolean().default(true),
+  widget: z.object({
+    visible: z.boolean().default(true),
+    enabled: z.boolean().default(true),
+    decorationEnabled: z.boolean().default(true),
+    size: z.number().min(200).max(800).default(360),
+    right: z.number().min(0).max(200).default(24),
+    bottom: z.number().min(0).max(200).default(20),
+  }),
 }) as unknown as z<AdConfig>
 
 // --- Credential resolution ------------------------------------------------

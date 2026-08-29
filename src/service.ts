@@ -17,7 +17,47 @@ import { loadConfigFromFile, resolveCredentials } from './config.ts'
 import { callAdEndpoint, normalizeAdFeed, streamAdEndpoint, type AdItem, fillTemplate } from './adapter.ts'
 import { CartStore, type CartLine } from './cart.ts'
 import { ERRORS } from './messages.ts'
-import { CORDIS_NAME, DEFAULT_POLL_MS, MAX_HISTORY_TURNS } from './constants.ts'
+import {
+  CORDIS_NAME,
+  DEFAULT_MAX_ITEMS,
+  DEFAULT_POLL_MS,
+  DEFAULT_WIDGET_INSET,
+  DEFAULT_WIDGET_SIZE,
+  MAX_FEED_ITEMS,
+  MAX_HISTORY_TURNS,
+  MAX_WIDGET_INSET,
+  MAX_WIDGET_SIZE,
+  MIN_WIDGET_INSET,
+  MIN_WIDGET_SIZE,
+} from './constants.ts'
+
+/** Pet-style widget display settings: a single struct shared with the host
+ * settings document and the `/api/ad/display` mutation route. */
+export interface AdDisplaySettings {
+  visible: boolean
+  enabled: boolean
+  decorationEnabled: boolean
+  size: number
+  right: number
+  bottom: number
+}
+
+const DEFAULT_DISPLAY: AdDisplaySettings = {
+  visible: true,
+  enabled: true,
+  decorationEnabled: true,
+  size: DEFAULT_WIDGET_SIZE,
+  right: DEFAULT_WIDGET_INSET,
+  bottom: 20,
+}
+
+function clampInt(value: number, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback
+  const rounded = Math.round(value)
+  if (rounded < min) return min
+  if (rounded > max) return max
+  return rounded
+}
 
 export const AD_SETTINGS_NAMESPACE = CORDIS_NAME
 
@@ -49,6 +89,8 @@ export interface AdSourceView {
   campaignLabel?: string
   /** Names of available actions the browser can invoke. */
   actions: string[]
+  /** How many items the host currently has in rotation for this source. */
+  itemCount: number
 }
 
 export interface AdRuntimeContext {
@@ -65,12 +107,42 @@ export class AdService extends Service {
   private cart = new CartStore()
   private enabled: boolean
   private activeSourceId: string | undefined
+  /**
+   * Pet-style display settings, mirrored from the host settings document.
+   * The host's `installSettingsSection` is the source of truth — this
+   * struct exists so the runtime can answer `/api/ad/sources` and
+   * `/api/ad/display` without a round-trip through the settings store.
+   */
+  private display: AdDisplaySettings = { ...DEFAULT_DISPLAY }
+
+  /**
+   * Active item counts per source — surfaces in the widget header as
+   * «N товаров в ротации» so the user can see how much the source has
+   * actually loaded (the old "только несколько скинов" was a 50-item cap
+   * the user couldn't see).
+   */
+  private readonly itemCounts = new Map<string, number>()
 
   constructor(ctx: Context, rawConfig: AdConfig) {
     super(ctx, CORDIS_NAME)
     const config = loadConfigFromFile(rawConfig)
     this.enabled = config.enabled ?? true
     this.activeSourceId = config.activeSourceId
+    if (config.widget !== undefined) {
+      // Seed display from config so the widget picks up the user's
+      // configured size/position without waiting for the first settings
+      // round-trip. The settings card is still the source of truth once
+      // the user opens it.
+      const w = config.widget
+      this.setDisplay({
+        visible: w.visible ?? true,
+        enabled: w.enabled ?? true,
+        decorationEnabled: w.decorationEnabled ?? true,
+        size: w.size ?? DEFAULT_WIDGET_SIZE,
+        right: w.right ?? DEFAULT_WIDGET_INSET,
+        bottom: w.bottom ?? 20,
+      })
+    }
     for (const source of config.sources ?? []) {
       if (source.enabled === false) continue
       this.sources.set(source.id, source)
@@ -84,6 +156,45 @@ export class AdService extends Service {
   /** Whether the plugin is currently active (settings toggle). */
   isEnabled(): boolean { return this.enabled }
   setEnabled(value: boolean): void { this.enabled = value }
+
+  /**
+   * The currently-active source id (the one the widget rotates through).
+   * Defaults to the configured `activeSourceId` or the first registered
+   * source. Live-editable from the settings card so the user can pick
+   * which source is on by default without restarting the plugin.
+   */
+  activeId(): string | undefined { return this.activeSourceId }
+  setActiveSourceId(value: string): void {
+    if (this.sources.has(value)) this.activeSourceId = value
+  }
+
+  /** Read the current display settings (Pet-style). */
+  getDisplay(): AdDisplaySettings {
+    return { ...this.display }
+  }
+
+  /**
+   * Apply a display patch (called from the host settings onChange hook
+   * and from the `/api/ad/display` route after a drag). Unknown fields
+   * are silently dropped; numeric fields are clamped to the same bounds
+   * the host's settings schema uses.
+   */
+  setDisplay(patch: Partial<AdDisplaySettings>): void {
+    const next: AdDisplaySettings = { ...this.display, ...patch }
+    next.size = clampInt(next.size, MIN_WIDGET_SIZE, MAX_WIDGET_SIZE, DEFAULT_WIDGET_SIZE)
+    next.right = clampInt(next.right, MIN_WIDGET_INSET, MAX_WIDGET_INSET, DEFAULT_WIDGET_INSET)
+    next.bottom = clampInt(next.bottom, MIN_WIDGET_INSET, MAX_WIDGET_INSET, DEFAULT_WIDGET_INSET)
+    this.display = next
+  }
+
+  /**
+   * Read the count of items currently in rotation for a source (after
+   * `maxItems` and global cap). Returns 0 for unknown sources. Used by
+   * the widget header to show «N товаров».
+   */
+  getItemCount(sourceId: string): number {
+    return this.itemCounts.get(sourceId) ?? 0
+  }
 
   /** Credential-free list of configured sources, for the widget/settings UI. */
   listSources(runtime: AdRuntimeContext = {}): AdSourceView[] {
@@ -99,6 +210,7 @@ export class AdService extends Service {
         eligible: eligibility.eligible,
         ineligibleReason: eligibility.reason,
         actions: (s.actions ?? []).map((a) => a.id),
+        itemCount: this.itemCounts.get(s.id) ?? 0,
       }
       const label = campaignLabel(s)
       if (label !== undefined) view.campaignLabel = label
@@ -113,11 +225,29 @@ export class AdService extends Service {
   }
 
   private startPolling(source: AdSourceConfig): void {
-    if (source.feed === undefined) return
+    // Static-list sources (no `feed`) get a one-shot load — no interval.
+    if (source.feed === undefined) {
+      if ((source.staticItems ?? []).length > 0) {
+        this.seedStaticItems(source)
+      }
+      return
+    }
     const refresh = (): void => { void this.refreshFeed(source.id) }
     refresh()
     const interval = setInterval(refresh, source.pollIntervalMs ?? DEFAULT_POLL_MS)
     this.timers.set(source.id, interval)
+  }
+
+  /**
+   * Seed the cache with the source's `staticItems` (one-shot, no polling).
+   * Honours `maxItems` and the global `MAX_FEED_ITEMS` ceiling.
+   */
+  private seedStaticItems(source: AdSourceConfig): void {
+    const raw = source.staticItems ?? []
+    const cap = source.maxItems ?? DEFAULT_MAX_ITEMS
+    const items = raw.slice(0, Math.min(cap, MAX_FEED_ITEMS))
+    this.cache.set(source.id, { items, cursor: 0, fetchedAt: Date.now() })
+    this.itemCounts.set(source.id, items.length)
   }
 
   private async refreshFeed(sourceId: string): Promise<void> {
@@ -133,6 +263,7 @@ export class AdService extends Service {
       )
       const items = normalizeAdFeed(payload, source)
       this.cache.set(sourceId, { items, cursor: 0, fetchedAt: Date.now() })
+      this.itemCounts.set(sourceId, items.length)
     } catch (error) {
       const previous = this.cache.get(sourceId)
       this.cache.set(sourceId, {

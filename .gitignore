@@ -27,3 +27,7 @@ dist/
 .vscode/
 .idea/
 .DS_Store
+
+# Local Claude settings — contains user-specific API keys, never tracked
+.claude/settings.json
+.claude/settings.json_back

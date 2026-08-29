@@ -10,7 +10,7 @@
 import type { AdEndpointConfig, AdSourceConfig, ResolvedAdCredentials } from './config.ts'
 import { getPath as readDotPath } from './mapping.ts'
 import { ERRORS } from './messages.ts'
-import { DEFAULT_CHAT_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS, MAX_FEED_ITEMS, STREAM_MAX_BYTES } from './constants.ts'
+import { DEFAULT_CHAT_TIMEOUT_MS, DEFAULT_MAX_ITEMS, DEFAULT_REQUEST_TIMEOUT_MS, MAX_FEED_ITEMS, STREAM_MAX_BYTES } from './constants.ts'
 
 /** One media asset in a product's carousel. */
 export interface AdMedia {
@@ -541,11 +541,18 @@ export async function streamAdEndpoint(
   }
 }
 
+/** Per-source item cap (with the global `MAX_FEED_ITEMS` ceiling as a safety net). */
+function effectiveMaxItems(source?: AdSourceConfig): number {
+  const perSource = source?.maxItems ?? DEFAULT_MAX_ITEMS
+  return Math.max(1, Math.min(perSource, MAX_FEED_ITEMS))
+}
+
 /** Extract a list payload into normalized AdItems regardless of nesting shape. */
 export function normalizeAdFeed(payload: unknown, source?: AdSourceConfig): AdItem[] {
+  const cap = effectiveMaxItems(source)
   if (Array.isArray(payload)) {
     return payload.map((entry, i) => normalizeAdItem(entry, i, source))
-      .filter((item): item is AdItem => item !== undefined).slice(0, MAX_FEED_ITEMS)
+      .filter((item): item is AdItem => item !== undefined).slice(0, cap)
   }
   if (payload === null || typeof payload !== 'object') return []
   // Detect the flat-map shape used by CS:GO/Dota markets: the source
@@ -585,9 +592,9 @@ export function normalizeAdFeed(payload: unknown, source?: AdSourceConfig): AdIt
     }
     const entries = items.map(([hashName, price]) => ({ [hashName]: price }))
     return entries.map((entry, i) => normalizeAdItem(entry, i, source))
-      .filter((item): item is AdItem => item !== undefined).slice(0, MAX_FEED_ITEMS)
+      .filter((item): item is AdItem => item !== undefined).slice(0, cap)
   }
   const list = Object.values(payload as Record<string, unknown>)
   return list.map((entry, i) => normalizeAdItem(entry, i, source))
-    .filter((item): item is AdItem => item !== undefined).slice(0, MAX_FEED_ITEMS)
+    .filter((item): item is AdItem => item !== undefined).slice(0, cap)
 }

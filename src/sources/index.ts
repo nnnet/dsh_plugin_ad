@@ -16,4 +16,6 @@
 
 export { buildCsgoMarketSource, csgoFeedEntry } from './csgo.ts'
 export type { CsgoMarketOptions } from './csgo.ts'
+export { buildTyanVideosSource } from './tyan.ts'
+export type { TyanVideosOptions } from './tyan.ts'
 export { csgoImageUrl, steamImageUrl, steamListingUrl, dotaPriceFeedUrl, dotaImageUrl } from './image-templates.ts'

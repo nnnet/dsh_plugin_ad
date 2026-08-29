@@ -8,7 +8,7 @@
   position: fixed;
   right: 24px;
   bottom: 20px;
-  width: 300px;
+  width: 360px;
   max-width: calc(100vw - 32px);
   background: var(--dsh-surface, #1e1e1e);
   color: var(--dsh-on-surface, #f0f0f0);
@@ -17,6 +17,12 @@
   overflow: hidden;
   font-size: 13px;
   z-index: 1000;
+  touch-action: none;
+  user-select: none;
+}
+
+.widgetHovered {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
 
 .header {
@@ -25,6 +31,70 @@
   gap: 8px;
   padding: 8px 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  /* Drag handle: header is the only part that drags. Inner controls
+   * (buttons / select) keep their own click behaviour. */
+  cursor: grab;
+}
+
+.header:active {
+  cursor: grabbing;
+}
+
+.itemCount {
+  font-size: 10px;
+  opacity: 0.55;
+  letter-spacing: 0.02em;
+  margin-right: 4px;
+  white-space: nowrap;
+}
+
+.sourceBar {
+  display: none;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sourceBarVisible {
+  display: flex;
+}
+
+.sourcePill {
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sourcePill:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.sourcePillActive {
+  background: var(--dsh-accent, #3a7afe);
+  color: #fff;
+  border-color: transparent;
+}
+
+.sourcePillIneligible {
+  opacity: 0.55;
+  font-style: italic;
+}
+
+.sourcePillCount {
+  font-size: 10px;
+  opacity: 0.75;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 1px 4px;
+  border-radius: 6px;
 }
 
 .title {

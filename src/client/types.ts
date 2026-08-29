@@ -56,6 +56,8 @@ export interface SourceView {
   eligible: boolean
   ineligibleReason?: 'frequency-cap' | 'targeting'
   campaignLabel?: string
+  /** How many items the host currently has in rotation for this source. */
+  itemCount: number
 }
 
 export interface CartLineView {
@@ -75,4 +77,22 @@ export interface AdRuntimeContext {
   locale?: string
   path?: string
   tags?: string[]
+}
+
+/** Mirrors the host `AdDisplaySettings` (Pet-style). */
+export interface DisplayView {
+  visible: boolean
+  enabled: boolean
+  decorationEnabled: boolean
+  size: number
+  right: number
+  bottom: number
+}
+
+/** Response shape of `/api/ad/sources` — sources + current display settings. */
+export interface SourcesResponse {
+  sources: SourceView[]
+  display: DisplayView
+  enabled: boolean
+  activeSourceId?: string
 }

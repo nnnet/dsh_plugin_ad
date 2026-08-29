@@ -4,8 +4,9 @@
 #   1. "csgo-market"  — a CS:GO skin marketplace driven by market.csgo.com's
 #      public price feed. Demonstrates buyer-cabinet credentials, the
 #      csgo.com image CDN URL pattern, and the marketplace renderer.
-#   2. "house-banner" — a minimal example: a single rotating image feed
-#      with no auth and no chat.
+#   2. "tyan-videos"  — a static list of three mp4 avatars served from
+#      static.tyan.ai. Demonstrates the no-poll `staticItems` shape and
+#      the video renderer (autoplay muted loop playsinline).
 #
 # Secrets: prefer the `*Env` fields (read from process.env at request time)
 # over the plain `login`/`password`/`apiKey`/`token` fields. The plain
@@ -15,10 +16,18 @@
 # If you'd rather skip the YAML for CS:GO and use the built-in preset
 # (src/sources/csgo.ts), call `buildCsgoMarketSource({ currency, imageWidth,
 # loginEnv, passwordEnv, ... })` from your code and merge the result into
-# `sources[]`.
+# `sources[]`. Same for tyan — `buildTyanVideosSource({ videos: [...] })`.
 
 enabled: true
 activeSourceId: csgo-market
+
+widget:
+  visible: true
+  enabled: true
+  decorationEnabled: true
+  size: 360
+  right: 24
+  bottom: 20
 
 sources:
   - id: csgo-market
@@ -52,9 +61,13 @@ sources:
       method: GET
       headers:
         Accept: "application/json"
-        User-Agent: "dsh-ad/0.2 (+https://github.com/nnnet/dsh_plugin_ad)"
+        User-Agent: "dsh-ad/0.7 (+https://github.com/nnnet/dsh_plugin_ad)"
       timeoutMs: 8000
     pollIntervalMs: 60000
+    # Per-source item cap. The default is 500 (was 50 in v0.6 — that was
+    # what made the widget show "only a few skins"). The global ceiling
+    # is 5_000; sources that need more should narrow the feed server-side.
+    maxItems: 500
     maxResponseBytes: 10485760
 
     mapping:
@@ -65,11 +78,11 @@ sources:
 
     clickThroughUrl: "https://market.csgo.com/item/{itemId}?utm_source=dsh-ad"
 
-    # targeting and frequencyCap intentionally omitted so the source is
-    # eligible everywhere on every page from the first impression. The
-    # public price feed at /api/v2/prices/RUB.json does NOT require the
-    # buyer-cabinet login for read access; auth is only needed for
-    # buy/sell/order endpoints.
+    # frequencyCap intentionally NOT set in v0.7: the previous default
+    # (5 / 10 min) made the widget go silent after ~2.5 minutes, which
+    # users read as "the source has no items". Enable it explicitly if
+    # you want impression throttling:
+    #   frequencyCap: { maxImpressions: 5, windowMs: 600000 }
 
     campaign:
       id: csgo-market-rotator
@@ -85,3 +98,48 @@ sources:
       __csgoImageWidth: 458
       __csgoCurrency: RUB
 
+  - id: tyan-videos
+    name: "Tyan Avatars"
+    enabled: true
+    contentTypes: [video]
+
+    # Host allowlist for both the static CDN and the click-through root.
+    allowHosts:
+      - static.tyan.ai
+      - tyan.ai
+    allowPrivateNetwork: false
+
+    # No `feed` — this source uses `staticItems` (one-shot, no polling).
+    # Each item is rendered as a muted-autoplay HTML5 video; click opens
+    # the tyan.ai root in a new tab.
+    staticItems:
+      - id: tyan-1
+        type: video
+        title: "Tyan avatar 0643…0f3"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/0643e8b9d9a1eedd0e3eb0f220429bdf59e4a0f3.mp4"
+        clickUrl: "https://tyan.ai"
+      - id: tyan-2
+        type: video
+        title: "Tyan avatar 3d9d…090"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/3d9dff10fe3d30660389d15b6d0e78eb5f1a7090.mp4"
+        clickUrl: "https://tyan.ai"
+      - id: tyan-3
+        type: video
+        title: "Tyan avatar 0643…0f3 (B)"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/0643e8b9d9a1eedd0e3eb0f220429bdf59e4a0f3.mp4"
+        clickUrl: "https://tyan.ai"
+
+    maxItems: 3
+    clickThroughUrl: "https://tyan.ai"
+
+    campaign:
+      id: tyan-avatar-rotator
+      placement: dsh-ad
+      priority: 50
+      weight: 5

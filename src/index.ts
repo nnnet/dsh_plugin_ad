@@ -63,33 +63,48 @@ export const inject = ['webServer']
 export const Config: z<AdConfig> = adConfigSchema
 
 /**
- * Settings section schema: which source is active and whether the widget is
- * shown at all. Per-source endpoint/credential configuration is deliberately
- * *not* exposed here — that lives in the plugin config file, not the
- * settings UI, so secrets never round-trip through the browser-editable
- * settings document.
+ * Pet-style settings schema: which source is active, whether the widget
+ * is shown at all, and where on the viewport it sits (size + right/bottom
+ * insets updated by drag-and-drop). Per-source endpoint/credential
+ * configuration is deliberately *not* exposed here — that lives in the
+ * plugin config file, not the settings UI, so secrets never round-trip
+ * through the browser-editable settings document.
+ *
+ * Field meanings mirror dsh-pet's `PetSettings` so the same
+ * `PluginSettingsCard` chrome renders both plugins without per-plugin
+ * fork.
  */
-export function makeAdSettingsSchema(sourceIds: string[]): z<{
+export interface AdWidgetSettings {
   enabled: boolean
   visible: boolean
+  decorationEnabled: boolean
+  size: number
+  right: number
+  bottom: number
   activeSourceId: string
-}> {
+}
+
+export function makeAdSettingsSchema(sourceIds: string[]): z<AdWidgetSettings> {
   return z.object({
     enabled: z.boolean().default(true),
     visible: z.boolean().default(true),
+    decorationEnabled: z.boolean().default(true),
+    size: z.number().min(200).max(800).default(360),
+    right: z.number().min(0).max(200).default(24),
+    bottom: z.number().min(0).max(200).default(20),
     activeSourceId: sourceIds.length > 0
       ? z.union(sourceIds.map((id) => z.const(id))).default(sourceIds[0]!)
       : z.string(),
-  }) as unknown as z<{
-    enabled: boolean
-    visible: boolean
-    activeSourceId: string
-  }>
+  }) as unknown as z<AdWidgetSettings>
 }
 
 interface AdSettingsSection {
   enabled?: boolean
   visible?: boolean
+  decorationEnabled?: boolean
+  size?: number
+  right?: number
+  bottom?: number
   activeSourceId?: string
 }
 
@@ -108,7 +123,11 @@ function applyImpl(ctx: Context, config: AdConfig = {}): void {
   let current: () => AdSettingsSection = () => base
   const base: AdSettingsSection = {
     enabled: merged.enabled ?? true,
-    visible: true,
+    visible: merged.widget?.visible ?? true,
+    decorationEnabled: merged.widget?.decorationEnabled ?? true,
+    size: merged.widget?.size ?? 360,
+    right: merged.widget?.right ?? 24,
+    bottom: merged.widget?.bottom ?? 20,
     activeSourceId: service.defaultSourceId(),
   }
 
@@ -138,10 +157,28 @@ function applyImpl(ctx: Context, config: AdConfig = {}): void {
     {
       enabled: base.enabled ?? true,
       visible: base.visible ?? true,
+      decorationEnabled: base.decorationEnabled ?? true,
+      size: base.size ?? 360,
+      right: base.right ?? 24,
+      bottom: base.bottom ?? 20,
       activeSourceId: base.activeSourceId ?? '',
     },
     {
-      setSource: (source) => { current = source },
+      setSource: (source) => {
+        current = source
+        // Push live widget changes into the service so /api/ad/sources
+        // and /api/ad/display reflect the new appearance immediately.
+        const s = source()
+        service.setDisplay({
+          visible: s.visible,
+          enabled: s.enabled,
+          decorationEnabled: s.decorationEnabled,
+          size: s.size,
+          right: s.right,
+          bottom: s.bottom,
+        })
+        if (s.activeSourceId !== undefined) service.setActiveSourceId(s.activeSourceId)
+      },
       onChange: () => { syncRoutes() },
     },
   )

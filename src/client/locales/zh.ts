@@ -19,6 +19,7 @@ export const zh = {
   'ad.widget.eligible': '可展示',
   'ad.widget.ineligibleFrequency': '已隐藏：曝光次数达到上限。',
   'ad.widget.ineligibleTargeting': '已隐藏：当前不匹配定向条件。',
+  'ad.widget.itemCount': '共 {n} 条',
 
   // 聊天面板。
   'ad.chat.title': '咨询助手',

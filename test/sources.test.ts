@@ -83,9 +83,12 @@ describe('sources: buildCsgoMarketSource', () => {
     expect(src.allowHosts).toEqual(['market.csgo.com', 'cdn.csgo.com', 'cdn2.csgo.com'])
   })
 
-  it('applies a default frequency cap and campaign', () => {
+  it('omits a default frequency cap so the widget keeps rotating, and sets the campaign placement', () => {
+    // v0.7: the default 5/10min cap made the widget go silent after
+    // ~2.5 minutes, which users read as "the source has no items".
+    // Opt-in via `opts.frequencyCap` if throttling is wanted.
     const src = buildCsgoMarketSource()
-    expect(src.frequencyCap?.maxImpressions).toBe(5)
+    expect(src.frequencyCap).toBeUndefined()
     expect(src.campaign?.placement).toBe('dsh-ad')
   })
 

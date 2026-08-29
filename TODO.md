@@ -54,7 +54,7 @@
 - i18n: `src/locales/{en,zh}.ts` + `src/client/locales/{en,zh}.ts`,
   `t()` с `{name}` плейсхолдерами, выбор по `document.documentElement.lang`
   (`zh*` → Chinese, иначе English).
-- Settings: `installSettingsSection(...)` с `enabled/visible/activeSourceId`.
+- Settings: `installSettingsSection(...)` с `enabled/visible/activeSourceId/width/position/rotationSec/language/theme` (Pet-стиль: размер, угол, тема, язык, интервал ротации). При live-edit `setSource` пушит изменения в `AdService.setWidgetSettings(...)` и `/api/ad/sources` сразу отдаёт обновлённый `widget` блок. Клиент применяет `position` (CSS класс), `width` (inline style), `theme` (light/dark), `language` (`document.documentElement.lang`), `rotationSec` (interval в ms; `0` = выключить авто-ротацию).
 - Тесты: `test/adapter.test.ts`, `test/config.test.ts`,
   `test/marketplace-renderer.test.ts`, `test/sources.test.ts` (vitest).
 

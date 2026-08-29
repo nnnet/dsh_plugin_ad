@@ -82,8 +82,36 @@ export function makeAdRoutes(deps: { service: AdService; ctx: Context }): WebRou
 
   return [
     // Credential-free list of configured sources, for the widget's picker.
+    // Also includes the current display settings so the client can apply
+    // size/position/visibility without a second round-trip.
     postRoute(AD_API_PREFIX + '/sources', (body) => {
-      return Promise.resolve(service.listSources(readRuntime(body)))
+      return Promise.resolve({
+        sources: service.listSources(readRuntime(body)),
+        display: service.getDisplay(),
+        enabled: service.isEnabled(),
+        activeSourceId: service.activeId(),
+      })
+    }),
+
+    // Read-only display settings. Kept separate from /sources so a
+    // future "appearance" sub-tab in the settings UI can refresh this
+    // without pulling the full source list.
+    getRoute(AD_API_PREFIX + '/widget-settings', () => {
+      return Promise.resolve({ ok: true, display: service.getDisplay(), enabled: service.isEnabled() })
+    }),
+
+    // Pet-style drag-and-drop / display mutation. The widget fires this
+    // on `pointerup` after a drag; the host clamps and persists.
+    postRoute(AD_API_PREFIX + '/display', (body) => {
+      const display: Record<string, unknown> = {}
+      if (typeof body.visible === 'boolean') display['visible'] = body.visible
+      if (typeof body.enabled === 'boolean') display['enabled'] = body.enabled
+      if (typeof body.decorationEnabled === 'boolean') display['decorationEnabled'] = body.decorationEnabled
+      if (typeof body.size === 'number') display['size'] = body.size
+      if (typeof body.right === 'number') display['right'] = body.right
+      if (typeof body.bottom === 'number') display['bottom'] = body.bottom
+      service.setDisplay(display as Partial<Parameters<AdService['setDisplay']>[0]>)
+      return Promise.resolve({ ok: true, display: service.getDisplay() })
     }),
 
     // DEBUG: feed cache introspection. Returns { id, items, lastError }

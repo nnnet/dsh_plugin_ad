@@ -20,6 +20,7 @@ export const en = {
   'ad.widget.eligible': 'Eligible',
   'ad.widget.ineligibleFrequency': 'Hidden: impression cap reached.',
   'ad.widget.ineligibleTargeting': 'Hidden: targeting rules do not match.',
+  'ad.widget.itemCount': '{n} in rotation',
 
   // Chat surface.
   'ad.chat.title': 'Ask the assistant',

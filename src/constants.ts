@@ -48,8 +48,35 @@ export const STREAM_MAX_BYTES = 8 * 1024 * 1024
 /** Default rotation interval for the widget's "next ad" poll (ms). */
 export const WIDGET_ROTATION_MS = 15_000
 
-/** Default max items the widget will keep per source cache. */
-export const MAX_FEED_ITEMS = 50
+/**
+ * Default per-source `maxItems` cap on how many normalized items the host
+ * keeps in rotation. Overridable via `source.maxItems`; raised from 50 →
+ * 500 in v0.7 so the user sees more than "a few" items from large feeds
+ * like CS:GO Market (~10k items).
+ */
+export const DEFAULT_MAX_ITEMS = 500
+
+/**
+ * Global hard ceiling on `source.maxItems` — anything larger is clamped.
+ * Raised to 5_000 to accommodate dense feeds without holding tens of MB
+ * of normalized items in memory; sources that need more should split
+ * their payload server-side.
+ */
+export const MAX_FEED_ITEMS = 5_000
+
+/** Default widget display size (px) — Pet-style `size` field. */
+export const DEFAULT_WIDGET_SIZE = 360
+
+/** Default widget horizontal/vertical inset (px) — Pet-style `right`/`bottom`. */
+export const DEFAULT_WIDGET_INSET = 24
+
+/** Bounds for the `right`/`bottom` slider in the settings card. */
+export const MIN_WIDGET_INSET = 0
+export const MAX_WIDGET_INSET = 200
+
+/** Bounds for the widget `size` slider. */
+export const MIN_WIDGET_SIZE = 200
+export const MAX_WIDGET_SIZE = 800
 
 /** Max number of cart lines the widget will display. */
 export const MAX_CART_LINES = 100
