@@ -7,6 +7,7 @@
  * @module dsh_plugin_ad/client/SimpleCreative
  */
 
+import type { MutableRefObject } from 'react'
 import type { AdItemView } from './types.ts'
 import { t } from './locales.ts'
 import styles from './ad.module.css'
@@ -16,14 +17,38 @@ function openClickThrough(url: string | undefined): void {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-export function SimpleCreative({ item, onClick: onClickProp }: {
+export function SimpleCreative({ item, suppressClickRef, onClick: onClickProp, onVideoError: onVideoErrorProp }: {
   item: AdItemView
+  /**
+   * Set by the parent widget while a drag gesture is in progress. Every
+   * click-through path here swallows the click if the gesture was a
+   * real drag — otherwise a browser-synthesised `click` fired right
+   * after `pointerup` would route the user's drag straight into the
+   * ad's landing page. The root `<div>` already checks this flag; we
+   * check it here too because the click target is the creative element
+   * (`<img>`, `<video>`, or a text card), not the root.
+   */
+  suppressClickRef?: MutableRefObject<boolean>
   onClick?: () => void
+  /** Called once when the <video> element fires an `error` event
+   *  (network/CORS/decode failure). The parent uses this to swap in a
+   *  fallback message instead of leaving a black box. */
+  onVideoError?: () => void
 }): React.ReactElement {
   const clickable = item.clickUrl !== undefined && item.clickUrl !== ''
   const onClick = (): void => {
+    if (suppressClickRef?.current === true) return
     if (onClickProp !== undefined) { onClickProp(); return }
     openClickThrough(item.clickUrl)
+  }
+
+  const stopAndMaybeClick = (e: React.MouseEvent): void => {
+    // Stop propagation so the parent widget's onClick (which is the
+    // click-through fallback for clicks on empty surface) doesn't
+    // double-fire and open two tabs.
+    e.stopPropagation()
+    if (suppressClickRef?.current === true) return
+    if (clickable) onClick()
   }
 
   switch (item.type) {
@@ -36,8 +61,9 @@ export function SimpleCreative({ item, onClick: onClickProp }: {
           muted
           loop
           playsInline
-          onClick={clickable ? onClick : undefined}
+          onClick={stopAndMaybeClick}
           title={clickable ? t('ad.widget.clickHint') : undefined}
+          onError={onVideoErrorProp}
         />
       )
     case 'gif':
@@ -47,7 +73,7 @@ export function SimpleCreative({ item, onClick: onClickProp }: {
           className={styles.media}
           src={item.mediaUrl}
           alt={item.title ?? ''}
-          onClick={clickable ? onClick : undefined}
+          onClick={stopAndMaybeClick}
           title={clickable ? t('ad.widget.clickHint') : undefined}
         />
       )
@@ -55,7 +81,7 @@ export function SimpleCreative({ item, onClick: onClickProp }: {
       return (
         <div
           className={styles.htmlCard}
-          onClick={clickable ? onClick : undefined}
+          onClick={stopAndMaybeClick}
           dangerouslySetInnerHTML={item.body !== undefined ? { __html: item.body } : undefined}
         />
       )
@@ -65,7 +91,7 @@ export function SimpleCreative({ item, onClick: onClickProp }: {
     case 'raw':
     default:
       return (
-        <div className={styles.textCard} onClick={clickable ? onClick : undefined}>
+        <div className={styles.textCard} onClick={stopAndMaybeClick}>
           {item.title !== undefined && <div className={styles.textTitle}>{item.title}</div>}
           {item.body !== undefined && <div className={styles.textBody}>{item.body}</div>}
         </div>

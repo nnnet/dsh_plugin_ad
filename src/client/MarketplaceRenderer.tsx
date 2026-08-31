@@ -15,6 +15,7 @@
  * @module dsh_plugin_ad/client/MarketplaceRenderer
  */
 
+import type { MutableRefObject } from 'react'
 import type { AdItemView } from './types.ts'
 import { ProductCarousel } from './ProductCarousel.tsx'
 import { PriceTag } from './PriceTag.tsx'
@@ -32,6 +33,7 @@ function openClickThrough(url: string | undefined): void {
 export function MarketplaceRenderer({
   item,
   campaignLabel,
+  suppressClickRef,
   onAddToCart,
   onOpenChat,
   onClickThrough,
@@ -39,6 +41,18 @@ export function MarketplaceRenderer({
   item: AdItemView
   /** Optional source-level campaign label, shown as a small badge in the corner. */
   campaignLabel?: string
+  /**
+   * Set by the parent widget while a drag gesture is in progress. Every
+   * click-through path here checks it before opening the destination —
+   * otherwise a browser-synthesised `click` fired immediately after
+   * `pointerup` would route the user's drag straight into the ad's
+   * landing page (or any other outbound URL the renderer triggers).
+   * Without this, a real drag >6 px still ends in a new tab opening
+   * because the click target is a child element (`<img>`, `<video>`, a
+   * CTA button), not the root `<div>` whose `onClick` swallows the
+   * gesture.
+   */
+  suppressClickRef?: MutableRefObject<boolean>
   onAddToCart: (item: AdItemView) => void
   onOpenChat: () => void
   /**
@@ -48,7 +62,9 @@ export function MarketplaceRenderer({
    */
   onClickThrough?: () => void
 }): React.ReactElement {
+  const wasDragged = (): boolean => suppressClickRef?.current === true
   const activate = (): void => {
+    if (wasDragged()) return
     if (onClickThrough !== undefined) { onClickThrough(); return }
     openClickThrough(item.clickUrl)
   }
@@ -63,6 +79,7 @@ export function MarketplaceRenderer({
         <ProductCarousel
           media={item.media}
           countLabel={t('ad.product.galleryCount', { count: item.media.length })}
+          suppressClickRef={suppressClickRef}
           onActivate={activate}
         />
       )}
@@ -75,6 +92,7 @@ export function MarketplaceRenderer({
           <CtaRow
             ctas={item.ctas}
             fallbackUrl={item.clickUrl}
+            suppressClickRef={suppressClickRef}
             onBuyOrLink={openClickThrough}
             onAddToCart={() => { onAddToCart(item) }}
             onOpenChat={onOpenChat}

@@ -6,7 +6,7 @@
  * @module dsh_plugin_ad/client/ProductCarousel
  */
 
-import { useState } from 'react'
+import { useState, type MutableRefObject } from 'react'
 import type { AdMedia } from './types.ts'
 import { t } from './locales.ts'
 import styles from './ad.module.css'
@@ -14,10 +14,19 @@ import styles from './ad.module.css'
 export function ProductCarousel({
   media,
   countLabel,
+  suppressClickRef,
   onActivate,
 }: {
   media: AdMedia[]
   countLabel?: string
+  /**
+   * Set by the parent widget while a drag gesture is in progress. Click
+   * on the media frame is swallowed if the gesture was a real drag —
+   * the browser fires a synthetic `click` immediately after `pointerup`
+   * and that click would otherwise route into the ad's landing page
+   * (the `onActivate` path opens `clickUrl`).
+   */
+  suppressClickRef?: MutableRefObject<boolean>
   onActivate: () => void
 }): React.ReactElement {
   const [index, setIndex] = useState(0)
@@ -25,6 +34,12 @@ export function ProductCarousel({
 
   const go = (delta: number): void => {
     setIndex((i) => (i + delta + media.length) % media.length)
+  }
+
+  const onMediaClick = (e: React.MouseEvent): void => {
+    e.stopPropagation()
+    if (suppressClickRef?.current === true) return
+    onActivate()
   }
 
   return (
@@ -39,11 +54,11 @@ export function ProductCarousel({
             muted
             loop
             playsInline
-            onClick={onActivate}
+            onClick={onMediaClick}
           />
           )
         : (
-          <img className={styles.media} src={current.url} alt="" onClick={onActivate} />
+          <img className={styles.media} src={current.url} alt="" onClick={onMediaClick} />
           )}
 
       {media.length > 1 && (

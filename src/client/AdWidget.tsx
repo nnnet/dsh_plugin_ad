@@ -23,7 +23,7 @@
  * @module dsh_plugin_ad/client/AdWidget
  */
 
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type MutableRefObject } from 'react'
 import { SimpleCreative } from './SimpleCreative.tsx'
 import { MarketplaceRenderer } from './MarketplaceRenderer.tsx'
 import { t } from './locales.ts'
@@ -521,7 +521,7 @@ export function AdWidget(): React.ReactElement {
             aria-label={t('ad.widget.navPrev')}
             title={t('ad.widget.navPrev')}
             onPointerDown={(e) => { e.stopPropagation() }}
-            onClick={(e) => { e.stopPropagation(); goRelative(-1) }}
+            onClick={(e) => { e.stopPropagation(); if (draggedRef.current) return; goRelative(-1) }}
           >
             ‹
           </button>
@@ -531,7 +531,7 @@ export function AdWidget(): React.ReactElement {
             aria-label={t('ad.widget.navNext')}
             title={t('ad.widget.navNext')}
             onPointerDown={(e) => { e.stopPropagation() }}
-            onClick={(e) => { e.stopPropagation(); goRelative(1) }}
+            onClick={(e) => { e.stopPropagation(); if (draggedRef.current) return; goRelative(1) }}
           >
             ›
           </button>
@@ -562,11 +562,12 @@ export function AdWidget(): React.ReactElement {
         item.type === 'product'
           ? <MarketplaceRenderer
               item={item}
+              suppressClickRef={draggedRef}
               onAddToCart={() => { void fetch(API_PREFIX + '/cart/add', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sourceId, itemId: item.id }) }).catch(() => {}) }}
               onOpenChat={() => { /* chat moved to settings card */ }}
               onClickThrough={() => { openClickThrough(item) }}
             />
-          : <SimpleCreative item={item} onClick={() => { openClickThrough(item) }} onVideoError={() => { setVideoError(true) }} />
+          : <SimpleCreative item={item} suppressClickRef={draggedRef} onClick={() => { openClickThrough(item) }} onVideoError={() => { setVideoError(true) }} />
       )}
     </div>
   )

@@ -1,28 +1,185 @@
-/* dsh-ad widget — single CSS module shared by the floating surface, the
- * product card, the chat panel, the cart drawer, and the marketplace
- * renderer's product carousel. Tries to look at home on the same dark
- * surface dsh-pet already uses, with explicit fallbacks so the widget is
- * still legible when the host theme doesn't define the dsh tokens. */
+/* dsh-ad widget — content-only floating surface, modeled on the
+ * dsh-pet sprite. The widget shell renders nothing of its own; only
+ * the creative inside (a <video>, an <img>, a marketplace card, etc.)
+ * is visible. The shell exists so the creative can be drag-positioned
+ * and bounded by pointer events.
+ *
+ * The renderers' intrinsic chrome (price tag, "Buy" button, etc.) is
+ * part of the creative and lives in the same CSS file because they
+ * share the .media / .productCard / .ctaRow classes the marketplace
+ * renderer reads. */
 
 .widget {
   position: fixed;
   right: 24px;
   bottom: 20px;
-  width: 360px;
-  max-width: calc(100vw - 32px);
-  background: var(--dsh-surface, #1e1e1e);
-  color: var(--dsh-on-surface, #f0f0f0);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  overflow: hidden;
+  /* Width and min-size are set inline via `display.size`; height
+   * auto-fits the content (a 240px square video stays 240x240, a
+   * marketplace card with a 16:9 image + price row + CTA row grows
+   * to fit). No background, no border-radius, no shadow: the surface
+   * stays invisible at rest so the creative is the only thing
+   * visually present — exactly like the dsh-pet sprite shows nothing
+   * but the character when the cursor isn't over it. */
+  background: transparent;
+  color: inherit;
+  overflow: visible;
   font-size: 13px;
   z-index: 1000;
+  /* The whole widget is the drag handle; visual cursor flips to
+   * "grabbing" while a real drag is in progress (see :active). */
+  cursor: grab;
   touch-action: none;
+  user-select: none;
+  border-radius: 8px;
+  /* No border at rest. The user discovers the widget by hovering:
+   * focus-within catches both the source <select> dropdown and the
+   * keyboard focus that follows a tab from the page body. */
+  transition: box-shadow 0.15s ease;
+}
+
+.widget:hover,
+.widget:focus-within {
+  box-shadow: 0 0 0 1px var(--dsh-accent, #3a7afe);
+}
+
+.widget:active {
+  cursor: grabbing;
+}
+
+/* Pet-style recovery control shown while Ads is disabled. It is a small
+ * circular button, not the former rectangular ad surface, and remains at
+ * the saved position so OFF cannot make the plugin impossible to recover. */
+.summonPill {
+  position: fixed;
+  right: 24px;
+  bottom: 20px;
+  z-index: 1000;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--dsh-accent, #3a7afe);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.summonPill:hover,
+.summonPill:focus-visible {
+  filter: brightness(1.1);
+  outline: 2px solid var(--dsh-accent, #3a7afe);
+  outline-offset: 2px;
+}
+
+.summonIcon {
+  display: block;
+  line-height: 44px;
+  font-size: 18px;
+  transform: rotate(0deg);
+}
+
+/* --- Source picker (hover-revealed overlay) --------------------------- */
+
+.sourceBar {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  /* Hidden by default, revealed on widget hover or keyboard focus so
+   * the dropdown stays usable. Transitioning opacity (rather than
+   * display) keeps the element in the layout so the <select>'s
+   * focus-within state survives closing. */
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.widget:hover .sourceBar,
+.widget:focus-within .sourceBar {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sourceSelect {
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 2px 6px;
+  max-width: 160px;
+  cursor: pointer;
+  outline: none;
+  backdrop-filter: blur(4px);
+}
+
+.sourceSelect:focus {
+  border-color: var(--dsh-accent, #3a7afe);
+}
+
+.sourceSelect option {
+  background: var(--dsh-surface, #1e1e1e);
+  color: inherit;
+}
+
+/* --- Prev/Next nav buttons ------------------------------------------- */
+
+.navButton {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  /* Always visible at low alpha so users can see and click the
+   * prev/next affordances without having to first hover the widget.
+   * Hidden-until-hover broke the buttons in two real-world flows:
+   *   1. touch devices — there is no `:hover`, so the buttons were
+   *      effectively invisible and untappable;
+   *   2. a fresh mouse press anywhere on the widget kicks off the drag
+   *      gesture, and pointer capture reroutes subsequent moves to the
+   *      press target — once the cursor leaves the widget bounds the
+   *      buttons go back to `opacity: 0` and the user clicks air. */
+  opacity: 0.55;
+  transition: opacity 0.15s ease, transform 0.12s ease, background 0.12s ease;
+  z-index: 3;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  font-family: inherit;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
   user-select: none;
 }
 
-.widgetHovered {
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+.widget:hover .navButton,
+.widget:focus-within .navButton {
+  opacity: 1;
+}
+
+.navButton:hover {
+  background: rgba(0, 0, 0, 0.85);
+  transform: translateY(-50%) scale(1.08);
+}
+
+.navButton:active {
+  transform: translateY(-50%) scale(0.96);
+}
+
+.navPrev {
+  left: 8px;
+}
+
+.navNext {
+  right: 8px;
 }
 
 .header {
@@ -48,53 +205,41 @@
   white-space: nowrap;
 }
 
-.sourceBar {
-  display: none;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 6px 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.03);
-}
+/* --- Header controls (hover-revealed) --------------------------------- */
 
-.sourceBarVisible {
-  display: flex;
-}
-
-.sourcePill {
-  background: rgba(255, 255, 255, 0.06);
-  color: inherit;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  font-size: 11px;
-  padding: 3px 8px;
-  cursor: pointer;
+.headerActions {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.15s ease;
 }
 
-.sourcePill:hover {
-  background: rgba(255, 255, 255, 0.12);
+.widget:hover .headerActions,
+.widget:focus-within .headerActions {
+  opacity: 1;
 }
 
-.sourcePillActive {
-  background: var(--dsh-accent, #3a7afe);
-  color: #fff;
-  border-color: transparent;
-}
-
-.sourcePillIneligible {
-  opacity: 0.55;
-  font-style: italic;
-}
-
-.sourcePillCount {
-  font-size: 10px;
-  opacity: 0.75;
-  background: rgba(0, 0, 0, 0.25);
-  padding: 1px 4px;
+.headerSelect {
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
+  font-size: 11px;
+  padding: 2px 6px;
+  max-width: 140px;
+  cursor: pointer;
+  outline: none;
+}
+
+.headerSelect:focus {
+  border-color: var(--dsh-accent, #3a7afe);
+}
+
+.headerSelect option {
+  background: var(--dsh-surface, #1e1e1e);
+  color: inherit;
 }
 
 .title {
@@ -145,9 +290,11 @@
 .media {
   display: block;
   width: 100%;
-  max-height: 220px;
-  object-fit: cover;
+  height: auto;
+  max-height: 480px;
+  object-fit: contain;
   cursor: pointer;
+  border-radius: 8px;
 }
 
 .textCard {
