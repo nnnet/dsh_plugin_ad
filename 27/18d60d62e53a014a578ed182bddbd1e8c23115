@@ -1,0 +1,22 @@
+src/client/AdWidget.tsx
+  s_0eddfd88348f00::t_9a1f7e4a64976b 330-333
+  s_0eddfd88348f00::t_825586944b0492 291-297
+  s_0eddfd88348f00::t_87d15d1aa26782 95-109,115
+  s_0eddfd88348f00::t_11254d8b7b113c 382-387
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "2718d60d62e53a014a578ed182bddbd1e8c23115",
+  "prompts": {},
+  "sessions": {
+    "s_0eddfd88348f00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a98fcee7-ded9-4382-a2c8-b8651f2e8096",
+        "model": "minimax/minimax-m3:free"
+      },
+      "human_author": "nnnet <21066097+nnnet@users.noreply.github.com>"
+    }
+  }
+}
