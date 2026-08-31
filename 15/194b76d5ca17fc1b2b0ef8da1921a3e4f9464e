@@ -1,0 +1,53 @@
+src/client/ad.module.css
+  s_17603d930889e7::t_773b6f11a30b86 1-10,23-25,28-30,45-46
+  s_17603d930889e7::t_ed34fb1c372444 208-212,214-216,219-221,224,228,230-231,233,236-237,240-242
+  s_17603d930889e7::t_eabd296574c212 49-65,68-81
+  s_17603d930889e7::t_358205fc0a7398 16-22,34-37,42
+  s_17603d930889e7::t_f0433fc5f0125d 33,38-41
+  s_17603d930889e7::t_0782bbc9469e0c 293-295,297
+  s_0eddfd88348f00::t_8fa48b2739c177 43,47,126-141,152-182
+  s_17603d930889e7::t_d5b1ff920ae230 82-125
+  s_0eddfd88348f00::t_e6dbb75bcb903b 142-151
+  s_0eddfd88348f00::t_35c79bf43f0933 44,48
+src/client/CtaRow.tsx
+  s_0eddfd88348f00::t_b34fe962f438b5 10,25,32-39,50
+  s_17603d930889e7::t_e426b5e8b63707 56-60
+src/client/AdWidget.tsx
+  s_0eddfd88348f00::t_52b9fd4998b09c 26
+  s_0eddfd88348f00::t_2523858210774e 524,534
+  s_0eddfd88348f00::t_a5d7b88ca35821 565,570
+src/client/MarketplaceRenderer.tsx
+  s_0eddfd88348f00::t_195e2cefd973a2 95
+  s_0eddfd88348f00::t_f8ef6656c193f7 18,36,44-55,65,67
+  s_0eddfd88348f00::t_4b7cb048412ad7 82
+src/client/SimpleCreative.tsx
+  s_17603d930889e7::t_c9b58b40088535 33-36,66
+  s_17603d930889e7::t_c5d3665b69f415 45-49,51-53,64,76,84,94
+  s_0eddfd88348f00::t_fd638ca88df9d3 10,20,22-31,40,50
+src/client/ProductCarousel.tsx
+  s_0eddfd88348f00::t_15cad069d022fc 9,17,22-29,39-44,57,61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "15194b76d5ca17fc1b2b0ef8da1921a3e4f9464e",
+  "prompts": {},
+  "sessions": {
+    "s_0eddfd88348f00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a98fcee7-ded9-4382-a2c8-b8651f2e8096",
+        "model": "minimax/minimax-m3:free"
+      },
+      "human_author": "nnnet <21066097+nnnet@users.noreply.github.com>"
+    },
+    "s_17603d930889e7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1859d4c4-fe9b-47fb-9acb-6b1ec3cecab0",
+        "model": "minimax/minimax-m3:free"
+      },
+      "human_author": null
+    }
+  }
+}
