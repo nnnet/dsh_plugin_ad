@@ -92,14 +92,27 @@ export function AdWidget(): React.ReactElement {
       })
       if (res.display !== undefined) {
         setDisplay((prev) => {
-          const next = { ...DEFAULT_DISPLAY, ...res.display }
+          // Only merge host-controlled fields (size, visibility, etc.)
+          // from the poll. Drag-driven `right`/`bottom` are owned by
+          // this widget — the user just dropped the widget at a
+          // specific spot, and the very next poll must not snap it
+          // back. The AdSettingsCard, summon pill, and rotation
+          // interval flow through `/display` and converge here
+          // naturally, so dropping the right/bottom copy from the
+          // poll-merge doesn't lose host-driven updates.
+          const next = { ...prev }
+          const incoming = res.display
+          if (typeof incoming.visible === 'boolean') next.visible = incoming.visible
+          if (typeof incoming.enabled === 'boolean') next.enabled = incoming.enabled
+          if (typeof incoming.decorationEnabled === 'boolean') next.decorationEnabled = incoming.decorationEnabled
+          if (typeof incoming.size === 'number') next.size = incoming.size
+          if (typeof incoming.rotationMs === 'number') next.rotationMs = incoming.rotationMs
           if (
             prev.visible === next.visible
             && prev.enabled === next.enabled
             && prev.decorationEnabled === next.decorationEnabled
             && prev.size === next.size
-            && prev.right === next.right
-            && prev.bottom === next.bottom
+            && prev.rotationMs === next.rotationMs
           ) {
             return prev
           }
@@ -275,7 +288,13 @@ export function AdWidget(): React.ReactElement {
   const dragRef = useRef<{ startX: number; startY: number; right: number; bottom: number; pointerId: number } | null>(null)
   /** Set true the first time the press crosses the drag threshold. The
    *  onClick handler reads it directly to swallow the trailing click
-   *  that some browsers (trackpads) still emit after a small drag. */
+   *  that some browsers (trackpads) still emit after a small drag.
+   *  IMPORTANT: this flag is reset only at the *next* pointerdown, NOT
+   *  in pointerup. The browser fires a synthetic `click` immediately
+   *  after pointerup; if we cleared the flag in pointerup, onClick
+   *  would see `draggedRef === false` and open the click-through URL
+   *  on every drag. Reset-in-pointerup regression surfaced once;
+   *  keep this in mind if refactoring the gesture lifecycle. */
   const draggedRef = useRef(false)
   const widgetRef = useRef<HTMLDivElement | null>(null)
 
@@ -308,6 +327,10 @@ export function AdWidget(): React.ReactElement {
       bottom: display.bottom,
       pointerId: e.pointerId,
     }
+    // Reset the drag flag here (not in pointerup) so onClick after
+    // pointerup still sees "this gesture was a real drag" and swallows
+    // the trailing click. A bare tap never sets the flag, so a fresh
+    // press always starts with a clean false.
     draggedRef.current = false
   }, [display.right, display.bottom])
 
@@ -354,9 +377,14 @@ export function AdWidget(): React.ReactElement {
       const wasDragged = draggedRef.current
       const finalPos = dragPosRef.current
       dragRef.current = null
-      draggedRef.current = false
       dragPosRef.current = null
       setDragPos(null)
+      // NOTE: do NOT reset `draggedRef.current` here. The browser fires
+      // a trailing `click` after pointerup, and onClick uses
+      // `draggedRef.current` to decide whether to swallow the click
+      // (real drag) or run click-through (tap). Resetting the flag in
+      // pointerup made every drag end in a click-through on the
+      // widget. The flag is reset at the *next* pointerdown instead.
       if (!wasDragged || !committed || finalPos === null) return
       // Commit the final position to host truth exactly once. The
       // functional setDisplay updates the local copy (so the widget
