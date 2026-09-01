@@ -1,0 +1,27 @@
+src/client/AdWidget.tsx
+  s_0eddfd88348f00::t_2da82940faf102 309-317
+  s_0eddfd88348f00::t_377779f4d64c1c 134-207
+  s_0eddfd88348f00::t_ed5ba01058da7f 233-239
+  s_0eddfd88348f00::t_e9d4e8a1d6293d 43,50
+  s_0eddfd88348f00::t_0c0d5fbc01ca08 376-385,388
+  s_0eddfd88348f00::t_bcf55311591ba3 328-342
+  s_0eddfd88348f00::t_55c1fe17fcf3fe 422-427,430-431
+  s_0eddfd88348f00::t_18a51a862e6c6b 104-121,133
+  s_0eddfd88348f00::t_52a8d53a4aa9d9 122-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "02483d3c036384707dbefed4d118dd3922a315f8",
+  "prompts": {},
+  "sessions": {
+    "s_0eddfd88348f00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a98fcee7-ded9-4382-a2c8-b8651f2e8096",
+        "model": "minimax/minimax-m3:free"
+      },
+      "human_author": "nnnet <21066097+nnnet@users.noreply.github.com>"
+    }
+  }
+}
