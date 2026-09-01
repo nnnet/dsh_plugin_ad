@@ -139,16 +139,24 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  /* Always visible at low alpha so users can see and click the
-   * prev/next affordances without having to first hover the widget.
-   * Hidden-until-hover broke the buttons in two real-world flows:
-   *   1. touch devices — there is no `:hover`, so the buttons were
-   *      effectively invisible and untappable;
-   *   2. a fresh mouse press anywhere on the widget kicks off the drag
-   *      gesture, and pointer capture reroutes subsequent moves to the
-   *      press target — once the cursor leaves the widget bounds the
-   *      buttons go back to `opacity: 0` and the user clicks air. */
-  opacity: 0.55;
+  /* Hidden by default, revealed on hover/focus/active — matches the
+   * Pet sprite UX (chrome fades in only when the user is interacting
+   * with the surface). The previous always-visible-at-0.55 design
+   * looked noisy in the bottom-right corner and conflicted with the
+   * spec's "hover-revealed" intent. Two real paths keep it reachable
+   * when the user is mid-gesture:
+   *   1. `:focus-within` covers keyboard tab focus and source
+   *      <select> interaction — once a child takes focus the chrome
+   *      stays revealed.
+   *   2. `[data-dsh-ad-active="1"]` is latched by the widget on any
+   *      pointerdown (drag, resize, or just a press) and released on
+   *      pointerup. So a press anywhere on the widget reveals the
+   *      chrome for the duration of the press, the user can aim at
+   *      a button mid-press, and the chrome fades back after release.
+   *      `pointer-events: none` at rest keeps the buttons click-through
+   *      inert when invisible (no "click air" effect). */
+  opacity: 0;
+  pointer-events: none;
   transition: opacity 0.15s ease, transform 0.12s ease, background 0.12s ease;
   z-index: 3;
   font-size: 16px;
@@ -161,8 +169,10 @@
 }
 
 .widget:hover .navButton,
-.widget:focus-within .navButton {
+.widget:focus-within .navButton,
+.widget[data-dsh-ad-active="1"] .navButton {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .navButton:hover {
@@ -191,7 +201,9 @@
  * none` on the shell must not silently neuter the handle. The
  * handle is a direct child of the widget root so the existing
  * widget-level `pointerdown` handler never sees a press on the
- * handle (we stopPropagation in React, defense-in-depth). */
+ * handle (we stopPropagation in React, defense-in-depth). Same
+ * hover-only reveal pattern as the nav buttons: hidden at rest,
+ * visible on widget hover/focus/active, fade in/out via opacity. */
 .resizeHandle {
   position: absolute;
   right: 0;
@@ -213,6 +225,20 @@
    * nav buttons are hovered. Below the widget's own focus ring. */
   z-index: 4;
   color: rgba(255, 255, 255, 0.55);
+  /* Hover-only reveal — the dots fade in with the rest of the chrome.
+   * The 32×32 hit target stays present at all times (no
+   * `pointer-events: none`) so a user aiming for the bottom-right
+   * corner can still press the handle, even when the glyph is faded;
+   * the press then latches `data-dsh-ad-active` and the glyph appears
+   * to confirm the gesture. */
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.12s ease;
+}
+
+.widget:hover .resizeHandle,
+.widget:focus-within .resizeHandle,
+.widget[data-dsh-ad-active="1"] .resizeHandle {
+  opacity: 1;
 }
 
 .resizeHandle:active,

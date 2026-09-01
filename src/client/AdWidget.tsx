@@ -86,6 +86,20 @@ export function AdWidget(): React.ReactElement {
 
   // --- Display fetch (initial + on settings change) -----------------------
 
+  // Tracks which `sourceId` we've already kicked off a `/api/ad/next`
+  // for. Without this, a widget that mounts before the host has the
+  // source config loaded would have to wait for the *next* sources
+  // poll (2 s by default) before its first item lands — and the
+  // prev/next nav buttons can't render until `item` is set, so the
+  // user perceives "buttons don't work for 20 s" while the host
+  // catches up. We re-fire `/api/ad/next` directly from `fetchDisplay`
+  // the first time we resolve a target source, so the buttons appear
+  // within the first poll cycle (typically < 200 ms after sources
+  // load). After that the existing `useEffect([sourceId])` keeps
+  // things in sync, and this ref keeps us from re-issuing the same
+  // request on every poll.
+  const fetchedForSourceRef = useRef<string | null>(null)
+
   const fetchDisplay = useCallback((): void => {
     adFetch<SourcesResponse>(API_PREFIX + '/sources', { ...runtimeContext() }).then((res) => {
       const list = res.sources ?? []
@@ -99,6 +113,46 @@ export function AdWidget(): React.ReactElement {
         if (targetSource === undefined) return prev
         return prev === targetSource ? prev : targetSource
       })
+      // Direct kick-off: if we just resolved a target source and we
+      // haven't fetched an item for it yet, fire `/api/ad/next` now.
+      // The `useEffect([sourceId])` would also fire on a *change* of
+      // `sourceId`, but the very first mount (or any time the widget
+      // comes up against an empty sources list) needs this explicit
+      // call so the nav buttons have an `item` to gate on as fast as
+      // the host can answer.
+      if (
+        targetSource !== undefined
+        && fetchedForSourceRef.current !== targetSource
+      ) {
+        fetchedForSourceRef.current = targetSource
+        // Reuse the same fetchNext the effect calls. We can't go
+        // through the effect itself (the state hasn't propagated
+        // yet — the effect is scheduled for the *next* render), so
+        // fire it imperatively. The body reads `sourceId` from the
+        // closure, but the body only needs it for the request body
+        // and the impression call — using the resolved target
+        // directly is equivalent and avoids a one-tick stale read.
+        const sid = targetSource
+        adFetch<{ ok: true; item: AdItemView | null } | { ok: false; error: string }>(
+          API_PREFIX + '/next',
+          { sourceId: sid, ...runtimeContext() },
+        ).then((res2) => {
+          if (res2.ok) {
+            setItem(res2.item)
+            if (res2.item !== null) {
+              void fetch(API_PREFIX + '/impression', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ sourceId: sid, itemId: res2.item.id }),
+              }).catch(() => {})
+            } else {
+              console.info('[dsh-ad] /next returned no item for source:', sid)
+            }
+          } else {
+            console.info('[dsh-ad] /next returned error:', res2.error)
+          }
+        }, () => { console.info('[dsh-ad] /next fetch rejected for source:', sid) })
+      }
       if (res.display !== undefined) {
         setDisplay((prev) => {
           // Only merge host-controlled fields (size, visibility, etc.)
@@ -190,6 +244,15 @@ export function AdWidget(): React.ReactElement {
 
   useEffect(() => {
     fetchNext()
+  }, [sourceId])
+
+  // Keep the "already fetched for this source" ref in sync with the
+  // current `sourceId` so the direct kick-off in `fetchDisplay` only
+  // fires for a freshly-resolved target — user-driven source changes
+  // (via `onSourceChange`) flow through the effect above and don't
+  // need a second fetch from the next poll.
+  useEffect(() => {
+    fetchedForSourceRef.current = sourceId ?? null
   }, [sourceId])
 
   // --- Auto-rotation: per-item `setTimeout` chain ----------------------
@@ -380,6 +443,36 @@ export function AdWidget(): React.ReactElement {
    *  keep this in mind if refactoring the gesture lifecycle. */
   const draggedRef = useRef(false)
   const widgetRef = useRef<HTMLDivElement | null>(null)
+
+  /**
+   * Whether the user is currently pressing anywhere on the widget
+   * (shell, handle, nav buttons, or source <select>). Drives the
+   * `data-dsh-ad-active="1"` attribute the CSS reads to reveal the
+   * chrome — without this, a press on the bottom-right corner that
+   * begins a resize would have the resize glyph fade out mid-gesture
+   * (no `:hover` while pointer capture reroutes the cursor). Latched
+   * true on `pointerdown` (any descendant), released on `pointerup` /
+   * `pointercancel` / `lostpointercapture` for the same pointer id.
+   *
+   * Kept in state, not a ref, so the data-attribute on the JSX root
+   * re-renders synchronously with the press — the CSS only reads the
+   * attribute, the actual press logic (drag, resize, click-through)
+   * still flows through `dragRef`/`resizeRef`/`draggedRef` unchanged.
+   */
+  const [chromeRevealed, setChromeRevealed] = useState(false)
+
+  /**
+   * Capture-phase pointerdown: fires before any descendant's
+   * `stopPropagation` (which the resize handle and the nav buttons
+   * use to keep the drag gesture off their backs). This is the only
+   * listener that gets a guaranteed-true signal for every press on
+   * the widget, regardless of which descendant caught the event. We
+   * don't start a drag here — the widget-level drag handler still
+   * runs in the bubble phase and is gated by its own target check.
+   */
+  const onPointerDownCapture = useCallback((_e: ReactPointerEvent<HTMLDivElement>): void => {
+    setChromeRevealed(true)
+  }, [])
 
   const onPointerDownWidget = useCallback((e: ReactPointerEvent<HTMLDivElement>): void => {
     if (e.button !== 0) return
@@ -581,7 +674,18 @@ export function AdWidget(): React.ReactElement {
         })
       }
     }
-    const onUp = (e: PointerEvent): void => { finishGesture(e.pointerId, true) }
+    const onUp = (e: PointerEvent): void => {
+      // Release the chrome latch on any pointerup, regardless of
+      // whether it corresponds to a tracked drag/resize gesture. The
+      // dragRef/resizeRef check keeps the latch true if another
+      // pointer is still down (e.g. multi-touch, or a second mouse
+      // button); we only flip the visible state when no tracked
+      // gesture is left holding it.
+      finishGesture(e.pointerId, true)
+      if (dragRef.current === null && resizeRef.current === null) {
+        setChromeRevealed(false)
+      }
+    }
     // Safety net: if the browser revokes capture (e.g. the user
     // releases outside any element we control, or a focus shift kills
     // the gesture), `lostpointercapture` fires and we still tear down
@@ -589,7 +693,12 @@ export function AdWidget(): React.ReactElement {
     // implicitly released after a normal pointerup, so this listener
     // is mostly redundant for happy-path gestures, but it's the one
     // that catches the edge case.
-    const onLostCapture = (e: PointerEvent): void => { finishGesture(e.pointerId, false) }
+    const onLostCapture = (e: PointerEvent): void => {
+      finishGesture(e.pointerId, false)
+      if (dragRef.current === null && resizeRef.current === null) {
+        setChromeRevealed(false)
+      }
+    }
     document.addEventListener('pointermove', onMove)
     document.addEventListener('pointerup', onUp)
     document.addEventListener('pointercancel', onUp)
@@ -718,6 +827,8 @@ export function AdWidget(): React.ReactElement {
       style={widgetStyle}
       data-dsh-ad-size={display.size}
       data-dsh-ad-enabled={display.enabled ? '1' : '0'}
+      data-dsh-ad-active={chromeRevealed ? '1' : undefined}
+      onPointerDownCapture={onPointerDownCapture}
       onPointerDown={onPointerDownWidget}
       onClick={() => {
         // Trailing click after a real drag (trackpads, some touch
