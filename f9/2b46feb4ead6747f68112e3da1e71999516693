@@ -1,0 +1,21 @@
+openspec/specs/source-display-time/spec.md
+  s_0eddfd88348f00::t_c8b1f6a62417ec 1-174
+openspec/specs/widget-resize/spec.md
+  s_0eddfd88348f00::t_c8b1f6a62417ec 1-137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "f92b46feb4ead6747f68112e3da1e71999516693",
+  "prompts": {},
+  "sessions": {
+    "s_0eddfd88348f00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a98fcee7-ded9-4382-a2c8-b8651f2e8096",
+        "model": "minimax/minimax-m3:free"
+      },
+      "human_author": "nnnet <21066097+nnnet@users.noreply.github.com>"
+    }
+  }
+}
