@@ -28,6 +28,7 @@ import { SimpleCreative } from './SimpleCreative.tsx'
 import { MarketplaceRenderer } from './MarketplaceRenderer.tsx'
 import { t } from './locales.ts'
 import { API_PREFIX as API_PATH, WIDGET_ROTATION_MS, DISPLAY_POLL_MS } from './constants.ts'
+import { clampDurationMs, DEFAULT_MIN_VIDEO_MS, DEFAULT_MAX_VIDEO_MS, pickRotationMs } from '../display-time.ts'
 import type {
   AdItemView,
   AdRuntimeContext,
@@ -66,6 +67,14 @@ const DEFAULT_DISPLAY: DisplayView = {
   right: 24,
   bottom: 20,
 }
+
+/** Bounds for the widget width (px). Mirrors the host schema in
+ *  `src/config.ts` and the server-side clamp in
+ *  `AdService.setDisplay`. Default 200..800. The slider in
+ *  `AdSettingsCard` and the SE handle both use these bounds so
+ *  neither path can drive the widget out of range. */
+const MIN_WIDGET_SIZE = 200
+const MAX_WIDGET_SIZE = 800
 
 export function AdWidget(): React.ReactElement {
   const [sources, setSources] = useState<SourceView[]>([])
@@ -183,14 +192,72 @@ export function AdWidget(): React.ReactElement {
     fetchNext()
   }, [sourceId])
 
+  // --- Auto-rotation: per-item `setTimeout` chain ----------------------
+  //
+  // The previous `setInterval` ran on a single global timer (15 s by
+  // default) and ignored each item's own `displayMs` — a 5 s video
+  // was followed by 10 s of dead air, a 30 s video was cut off
+  // mid-engagement. The OpenSpec change `feat-resize-and-display-ms`
+  // replaces the interval with a per-item timeout chain: every
+  // `item` change (or a `display.rotationMs` edit) cancels the
+  // pending timer and schedules a new one from the current item's
+  // `displayMs`. Manual prev/next go through the same path
+  // because they call `setItem(...)`, which re-runs this effect.
+  //
+  // Video items add a second refinement: the server's `displayMs`
+  // is the source's default (it has no `<video>` element). The
+  // browser reads `<video>.duration` on `loadedmetadata` and, if
+  // the value is usable, re-derives the timer with
+  // `clampDurationMs(duration, minVideoMs, maxVideoMs)`. Until
+  // metadata loads (or if it errors), the source's `displayMs` is
+  // the timer — same default the server advertised, no client-side
+  // guesswork.
+  const rotationTimerRef = useRef<number | null>(null)
+  const cancelRotationTimer = useCallback((): void => {
+    if (rotationTimerRef.current !== null) {
+      window.clearTimeout(rotationTimerRef.current)
+      rotationTimerRef.current = null
+    }
+  }, [])
   useEffect(() => {
-    // The host can override the auto-rotation interval via
-    // `display.rotationMs` (set from AdSettingsCard). Falls back to
-    // the client-side constant when the host doesn't override.
-    const intervalMs = display.rotationMs ?? WIDGET_ROTATION_MS
-    const interval = setInterval(fetchNext, intervalMs)
-    return () => { clearInterval(interval) }
-  }, [sourceId, display.rotationMs])
+    cancelRotationTimer()
+    if (item === null || item === undefined) return
+    const initialMs = pickRotationMs(item, display.rotationMs, WIDGET_ROTATION_MS)
+    rotationTimerRef.current = window.setTimeout(() => {
+      rotationTimerRef.current = null
+      fetchNext()
+    }, initialMs)
+    return () => { cancelRotationTimer() }
+  }, [item?.id, item?.displayMs, display.rotationMs])
+
+  /**
+   * Re-derive the rotation timer from the just-loaded `<video>`
+   * duration. Called once per `loadedmetadata` by `SimpleCreative`.
+   * If the duration is usable (finite, positive) and clamps to a
+   * different value than the current `displayMs`, we patch the item
+   * in place — `setItem({ ...item, displayMs: clamped })` — and the
+   * rotation effect above re-keys off the new value, rescheduling
+   * the pending timer.
+   *
+   * Stale-metadata guard: the effect keys off `item?.id`, so when
+   * a new item lands before the old `<video>` fires `loadedmetadata`
+   * the old handler is dropped along with the old element (React
+   * unmounts the `<video>` on source switch). The `onVideoError`
+   * path also surfaces a 30 s timeout: if the `<video>` never
+   * loads metadata within 30 s (network error, autoplay block,
+   * unsupported codec), we leave the source's `displayMs` in place
+   * and rotation continues on that timer. The `onError` handler
+   * already shows a fallback message instead of a black box.
+   */
+  const onVideoLoadedMetadata = useCallback((durationMs: number): void => {
+    const clamped = clampDurationMs(durationMs, DEFAULT_MIN_VIDEO_MS, DEFAULT_MAX_VIDEO_MS)
+    if (clamped === null) return
+    setItem((prev) => {
+      if (prev === null || prev === undefined) return prev
+      if (prev.displayMs === clamped) return prev
+      return { ...prev, displayMs: clamped }
+    })
+  }, [])
 
   /**
    * Manually step the rotation by `delta` items (±1) without waiting
@@ -281,11 +348,27 @@ export function AdWidget(): React.ReactElement {
   const dragPosRef = useRef<{ right: number; bottom: number } | null>(null)
   useEffect(() => { dragPosRef.current = dragPos }, [dragPos])
 
+  /** Resize gesture (SE handle). Symmetric to `dragPos` /
+   *  `dragPosRef`: a local `resizeSize` for 1:1 follow without
+   *  round-tripping on every pointermove, and a ref-mirror so the
+   *  pointerup handler (registered in a single mount-time effect
+   *  for closure stability) reads the latest in-flight value. */
+  const [resizeSize, setResizeSize] = useState<number | null>(null)
+  const resizeSizeRef = useRef<number | null>(null)
+  useEffect(() => { resizeSizeRef.current = resizeSize }, [resizeSize])
+
   /** Snapshot of the press: where the pointer started, plus the host
    *  position at that moment. Immutable for the duration of the
    *  gesture — recomputing from this snapshot each frame is what makes
    *  the cursor follow 1:1. */
   const dragRef = useRef<{ startX: number; startY: number; right: number; bottom: number; pointerId: number } | null>(null)
+  /** Snapshot of the resize gesture: cursor start, the widget's
+   *  current width at pointerdown, and the active pointer id. Same
+   *  shape as `dragRef` so the existing document-level
+   *  pointermove/pointerup listeners (registered once at mount
+   *  for closure stability) can be extended to handle both
+   *  gestures without re-binding handlers on every re-render. */
+  const resizeRef = useRef<{ startX: number; startY: number; startSize: number; pointerId: number } | null>(null)
   /** Set true the first time the press crosses the drag threshold. The
    *  onClick handler reads it directly to swallow the trailing click
    *  that some browsers (trackpads) still emit after a small drag.
@@ -301,9 +384,12 @@ export function AdWidget(): React.ReactElement {
   const onPointerDownWidget = useCallback((e: ReactPointerEvent<HTMLDivElement>): void => {
     if (e.button !== 0) return
     // Don't start a drag from interactive children — a press on the
-    // prev/next buttons, source <select>, or video controls should
-    // pass through to their own click handlers.
-    if ((e.target as HTMLElement).closest('button, select, input, a, video[controls]') !== null) return
+    // prev/next buttons, source <select>, video controls, or the
+    // SE resize handle should pass through to their own handlers.
+    // The handle's onPointerDown calls stopPropagation, so this
+    // check is defense-in-depth: if anything ever bypasses that,
+    // a press on the handle must not also start a drag.
+    if ((e.target as HTMLElement).closest('button, select, input, a, video[controls], [data-dsh-resize-handle]') !== null) return
     // Capture the gesture on the actual target element, not the
     // widget root. Per the W3C Pointer Events spec, the capture target
     // receives every pointermove/pointerup for the gesture, even when
@@ -334,6 +420,37 @@ export function AdWidget(): React.ReactElement {
     draggedRef.current = false
   }, [display.right, display.bottom])
 
+  /**
+   * Press on the SE handle. The handle is a direct child of the
+   * widget root and `stopPropagation`s this event so the widget's
+   * own `onPointerDown` never sees it — the two gestures are
+   * mutually exclusive by element target, not by timing. The
+   * handle's own `setPointerCapture` reroutes every pointermove /
+   * pointerup for the gesture to the handle element, even when
+   * the cursor leaves the 32×32 hit area, so a fast resize sweep
+   * outside the widget still works.
+   */
+  const onPointerDownResize = useCallback((e: ReactPointerEvent<HTMLButtonElement>): void => {
+    if (e.button !== 0) return
+    e.stopPropagation()
+    const targetEl = e.currentTarget
+    try { targetEl.setPointerCapture(e.pointerId) } catch { /* not supported */ }
+    e.preventDefault()
+    const liveSize = resizeSizeRef.current ?? display.size
+    resizeRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startSize: liveSize,
+      pointerId: e.pointerId,
+    }
+    // Seed the local snapshot so the very first pointermove reads a
+    // defined start (the render is still showing the host value).
+    if (resizeSizeRef.current === null) {
+      resizeSizeRef.current = liveSize
+      setResizeSize(liveSize)
+    }
+  }, [display.size])
+
   // Single mount-time registration of move/up/lostpointercapture
   // listeners. Reading all state from refs makes this closure stable
   // across re-renders — no stale closure race that could miss the
@@ -345,75 +462,124 @@ export function AdWidget(): React.ReactElement {
   useEffect(() => {
     const onMove = (e: PointerEvent): void => {
       const drag = dragRef.current
-      if (drag === null) return
-      if (drag.pointerId !== e.pointerId) return
-      const dx = e.clientX - drag.startX
-      const dy = e.clientY - drag.startY
-      if (!draggedRef.current && (Math.abs(dx) >= DRAG_THRESHOLD_PX || Math.abs(dy) >= DRAG_THRESHOLD_PX)) {
-        draggedRef.current = true
+      if (drag !== null && drag.pointerId === e.pointerId) {
+        const dx = e.clientX - drag.startX
+        const dy = e.clientY - drag.startY
+        if (!draggedRef.current && (Math.abs(dx) >= DRAG_THRESHOLD_PX || Math.abs(dy) >= DRAG_THRESHOLD_PX)) {
+          draggedRef.current = true
+        }
+        if (!draggedRef.current) return
+        const widgetEl = widgetRef.current
+        if (widgetEl === null) return
+        const width = widgetEl.offsetWidth || 240
+        const height = widgetEl.offsetHeight || 240
+        // Compute from the immutable start snapshot — `drag.right/bottom`
+        // were captured at pointerdown and never mutate, so the widget
+        // follows the cursor exactly even if a previous move event was
+        // dropped.
+        const right = clampPx(drag.right - dx, 0, Math.max(0, window.innerWidth - width))
+        const bottom = clampPx(drag.bottom - dy, 0, Math.max(0, window.innerHeight - height))
+        const next = { right, bottom }
+        const prev = dragPosRef.current
+        if (prev === null || prev.right !== right || prev.bottom !== bottom) {
+          dragPosRef.current = next
+          setDragPos(next)
+        }
+        return
       }
-      if (!draggedRef.current) return
-      const widgetEl = widgetRef.current
-      if (widgetEl === null) return
-      const width = widgetEl.offsetWidth || 240
-      const height = widgetEl.offsetHeight || 240
-      // Compute from the immutable start snapshot — `drag.right/bottom`
-      // were captured at pointerdown and never mutate, so the widget
-      // follows the cursor exactly even if a previous move event was
-      // dropped.
-      const right = clampPx(drag.right - dx, 0, Math.max(0, window.innerWidth - width))
-      const bottom = clampPx(drag.bottom - dy, 0, Math.max(0, window.innerHeight - height))
-      const next = { right, bottom }
-      const prev = dragPosRef.current
-      if (prev === null || prev.right !== right || prev.bottom !== bottom) {
-        dragPosRef.current = next
-        setDragPos(next)
+      // Resize gesture (SE handle). Symmetric to drag: anchored at the
+      // SE corner, so width grows directly with the cursor's rightward
+      // delta. We include dy as a secondary signal so a future
+      // diagonal handle feels right; the SE-only handle is dominated
+      // by dx in practice.
+      const resize = resizeRef.current
+      if (resize !== null && resize.pointerId === e.pointerId) {
+        const dx = e.clientX - resize.startX
+        const next = clampPx(resize.startSize + dx, MIN_WIDGET_SIZE, MAX_WIDGET_SIZE)
+        const prev = resizeSizeRef.current
+        if (prev !== next) {
+          resizeSizeRef.current = next
+          setResizeSize(next)
+        }
       }
     }
     const finishGesture = (pointerId: number, committed: boolean): void => {
       const drag = dragRef.current
-      if (drag === null) return
-      if (drag.pointerId !== pointerId) return
-      const wasDragged = draggedRef.current
-      const finalPos = dragPosRef.current
-      dragRef.current = null
-      dragPosRef.current = null
-      setDragPos(null)
-      // NOTE: do NOT reset `draggedRef.current` here. The browser fires
-      // a trailing `click` after pointerup, and onClick uses
-      // `draggedRef.current` to decide whether to swallow the click
-      // (real drag) or run click-through (tap). Resetting the flag in
-      // pointerup made every drag end in a click-through on the
-      // widget. The flag is reset at the *next* pointerdown instead.
-      if (!wasDragged || !committed || finalPos === null) return
-      // Commit the final position to host truth exactly once. The
-      // functional setDisplay updates the local copy (so the widget
-      // doesn't visibly snap back during the in-flight roundtrip) AND
-      // fires the persist call. Failures are logged but not reverted —
-      // the user already released the mouse and would experience a
-      // jarring jump if we rolled the position back.
-      const finalRight = finalPos.right
-      const finalBottom = finalPos.bottom
-      setDisplay(prev => {
-        if (prev.right === finalRight && prev.bottom === finalBottom) {
-          return prev
-        }
-        const next = { ...prev, right: finalRight, bottom: finalBottom }
-        adFetch<{ ok: true; display: DisplayView }>(API_PREFIX + '/display', {
-          right: finalRight,
-          bottom: finalBottom,
-        }).then((res) => {
-          if (res.ok && res.display !== undefined) {
-            setDisplay(d => {
-              if (d.right === res.display.right && d.bottom === res.display.bottom) return d
-              return { ...d, right: res.display.right, bottom: res.display.bottom }
-            })
+      if (drag !== null && drag.pointerId === pointerId) {
+        const wasDragged = draggedRef.current
+        const finalPos = dragPosRef.current
+        dragRef.current = null
+        dragPosRef.current = null
+        setDragPos(null)
+        // NOTE: do NOT reset `draggedRef.current` here. The browser fires
+        // a trailing `click` after pointerup, and onClick uses
+        // `draggedRef.current` to decide whether to swallow the click
+        // (real drag) or run click-through (tap). Resetting the flag in
+        // pointerup made every drag end in a click-through on the
+        // widget. The flag is reset at the *next* pointerdown instead.
+        if (!wasDragged || !committed || finalPos === null) return
+        // Commit the final position to host truth exactly once. The
+        // functional setDisplay updates the local copy (so the widget
+        // doesn't visibly snap back during the in-flight roundtrip) AND
+        // fires the persist call. Failures are logged but not reverted —
+        // the user already released the mouse and would experience a
+        // jarring jump if we rolled the position back.
+        const finalRight = finalPos.right
+        const finalBottom = finalPos.bottom
+        setDisplay(prev => {
+          if (prev.right === finalRight && prev.bottom === finalBottom) {
+            return prev
           }
-        }).catch((err: unknown) => {
-          console.info('[dsh-ad] /display persist rejected:', err)
+          const next = { ...prev, right: finalRight, bottom: finalBottom }
+          adFetch<{ ok: true; display: DisplayView }>(API_PREFIX + '/display', {
+            right: finalRight,
+            bottom: finalBottom,
+          }).then((res) => {
+            if (res.ok && res.display !== undefined) {
+              setDisplay(d => {
+                if (d.right === res.display.right && d.bottom === res.display.bottom) return d
+                return { ...d, right: res.display.right, bottom: res.display.bottom }
+              })
+            }
+          }).catch((err: unknown) => {
+            console.info('[dsh-ad] /display persist rejected:', err)
+          })
+          return next
         })
-        return next
-      })
+        return
+      }
+      // Resize finish: commit the final width exactly once. The
+      // functional setDisplay mirrors the drag-commit pattern —
+      // local copy first so the widget doesn't snap back, then the
+      // POST in the background, then a reconciliation pass on
+      // success. We only commit when the size actually changed; a
+      // bare tap (e.g. to focus the handle) doesn't churn the
+      // host's saved value.
+      const resize = resizeRef.current
+      if (resize !== null && resize.pointerId === pointerId) {
+        const finalSize = resizeSizeRef.current
+        resizeRef.current = null
+        resizeSizeRef.current = null
+        setResizeSize(null)
+        if (!committed || finalSize === null || finalSize === resize.startSize) return
+        setDisplay(prev => {
+          if (prev.size === finalSize) return prev
+          const next = { ...prev, size: finalSize }
+          adFetch<{ ok: true; display: DisplayView }>(API_PREFIX + '/display', {
+            size: finalSize,
+          }).then((res) => {
+            if (res.ok && res.display !== undefined) {
+              setDisplay(d => {
+                if (d.size === res.display.size) return d
+                return { ...d, size: res.display.size }
+              })
+            }
+          }).catch((err: unknown) => {
+            console.info('[dsh-ad] /display persist rejected:', err)
+          })
+          return next
+        })
+      }
     }
     const onUp = (e: PointerEvent): void => { finishGesture(e.pointerId, true) }
     // Safety net: if the browser revokes capture (e.g. the user
@@ -486,16 +652,64 @@ export function AdWidget(): React.ReactElement {
   // over. The cursor reflects that: `grab` when idle, `grabbing`
   // while a press is active — same UX as the pet sprite.
   const renderedPos = dragPos ?? { right: display.right, bottom: display.bottom }
+  // While the SE handle is in a resize gesture, the widget's width
+  // tracks the in-flight `resizeSize` snapshot for 1:1 follow
+  // without round-tripping on every pointermove. Otherwise we render
+  // the host-truth `display.size`. The `Math.max` guards the
+  // `display.size < 200` case (legacy hosts may ship a value below
+  // the new floor) and lets the CSS min-width keep the surface
+  // grabbable.
+  const liveSize = resizeSize ?? display.size
   const widgetStyle: React.CSSProperties = {
-    width: display.size >= 200 ? `${display.size}px` : undefined,
+    width: liveSize >= 200 ? `${liveSize}px` : undefined,
     maxWidth: 'calc(100vw - 32px)',
     minWidth: '120px',
     minHeight: '120px',
     right: `${renderedPos.right}px`,
     bottom: `${renderedPos.bottom}px`,
-    cursor: dragPos === null ? 'grab' : 'grabbing',
+    cursor: dragPos === null && resizeSize === null ? 'grab' : 'grabbing',
     touchAction: 'none',
   }
+
+  /**
+   * Keyboard affordances for the SE handle (the handle itself is a
+   * `<button>` so it gets focus + Enter/Space for free). Arrow keys
+   * nudge the width by 8px; Home/End jump to the bounds; PageUp/
+   * PageDown take a 32px step. Every change commits via the same
+   * `display` endpoint the slider uses, so the persistence path is
+   * the same regardless of how the resize was triggered.
+   */
+  const onResizeKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>): void => {
+    let delta = 0
+    let jump: number | null = null
+    switch (e.key) {
+      case 'ArrowLeft': delta = -8; break
+      case 'ArrowRight': delta = 8; break
+      case 'PageDown': delta = -32; break
+      case 'PageUp': delta = 32; break
+      case 'Home': jump = MIN_WIDGET_SIZE; break
+      case 'End': jump = MAX_WIDGET_SIZE; break
+      default: return
+    }
+    e.preventDefault()
+    e.stopPropagation()
+    const target = jump ?? clampPx(display.size + delta, MIN_WIDGET_SIZE, MAX_WIDGET_SIZE)
+    if (target === display.size) return
+    setDisplay(prev => {
+      if (prev.size === target) return prev
+      const next = { ...prev, size: target }
+      adFetch<{ ok: true; display: DisplayView }>(API_PREFIX + '/display', {
+        size: target,
+      }).then((res) => {
+        if (res.ok && res.display !== undefined) {
+          setDisplay(d => (d.size === res.display.size ? d : { ...d, size: res.display.size }))
+        }
+      }).catch((err: unknown) => {
+        console.info('[dsh-ad] /display persist rejected:', err)
+      })
+      return next
+    })
+  }, [display.size])
 
   return (
     <div
@@ -567,8 +781,42 @@ export function AdWidget(): React.ReactElement {
               onOpenChat={() => { /* chat moved to settings card */ }}
               onClickThrough={() => { openClickThrough(item) }}
             />
-          : <SimpleCreative item={item} suppressClickRef={draggedRef} onClick={() => { openClickThrough(item) }} onVideoError={() => { setVideoError(true) }} />
+          : <SimpleCreative
+              item={item}
+              suppressClickRef={draggedRef}
+              onClick={() => { openClickThrough(item) }}
+              onVideoError={() => { setVideoError(true) }}
+              onVideoLoadedMetadata={onVideoLoadedMetadata}
+            />
       )}
+
+      {/*
+        SE resize handle. Always rendered (not gated on item
+        presence) so the user can resize the empty state surface
+        too — that path matters for hosts that disable
+        `display.size` programmatically and want to verify the
+        user-visible width via the handle. The `data-dsh-resize-
+        handle` attribute is what the parent widget's
+        onPointerDown checks to skip the drag gesture (defense in
+        depth — the handle's own onPointerDown also calls
+        stopPropagation). `tabIndex={0}` makes the button
+        keyboard-focusable; ARIA label is read by screen readers
+        and shown in the browser's title tooltip.
+      */}
+      <button
+        type="button"
+        className={styles.resizeHandle}
+        data-dsh-resize-handle="1"
+        data-resizing={resizeSize === null ? 'false' : 'true'}
+        aria-label={t('ad.widget.resizeHint')}
+        title={t('ad.widget.resizeHint')}
+        tabIndex={0}
+        onPointerDown={onPointerDownResize}
+        onKeyDown={onResizeKeyDown}
+        onClick={(e) => { e.stopPropagation() }}
+      >
+        <span className={styles.resizeGlyph} aria-hidden="true" />
+      </button>
     </div>
   )
 }

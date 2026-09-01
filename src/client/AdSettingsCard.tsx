@@ -1,26 +1,29 @@
 /**
- * The ad settings card: which source is active, master switches (visible /
- * enabled / decoration), and display layout (size + right + bottom,
- * Pet-style). Bound to the 'ad' settings namespace the host plugin
- * registers. Rendered as an always-open first-level settings page that
- * the host's `settings.section` slot mounts as the content of the
- * top-level 'Ad' nav entry.
+ * The ad settings card: source picker, master switches (visible / enabled /
+ * decoration), and display layout (size + right + bottom, Pet-style). Bound
+ * to the 'ad' settings namespace the host plugin registers. Rendered as an
+ * always-open first-level settings page that the host's `settings.section`
+ * slot mounts as the content of the top-level 'Ad' nav entry.
  *
  * The source-choices list is loaded from the same `/api/ad/sources`
  * endpoint the widget reads — the card carries no source registry, it
  * just renders whatever the host serves.
+ *
+ * ## Slot contract
+ *
+ * The section is registered under `'settings.section'` with id `'ad'`. The
+ * shell passes runtime + locale props; the slot framework also injects the
+ * `adSettingsCard` store from `controller.inject()` as a `useAdSettingsCard`
+ * selector hook (see `InjectFace` in `@deepseek-ai/dsh-client-ui-slots`).
  */
 
 import type { ReactNode } from 'react'
 import type { SettingsScope, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: pulls the settings-surface SlotMap merge (the 'settings.section' entry).
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import { PluginSettingsCard, ValueField, BooleanField, ChoiceField } from './PluginSettingsCard.tsx'
+import { PluginSettingsCard, ValueField, SizeField, BooleanField, ChoiceField } from './PluginSettingsCard.tsx'
 import { CardForm, booleanField, choiceField, numberField, type CardActions, type CardShell, type FieldState as CardFieldState } from './settings-form.ts'
 import sectionCss from './settings-section.module.css'
-
-/** Minimal t/PropsLocale contract — mirrors dsh-pet's slot injection. */
-type LocaleT = (key: string, params?: Record<string, string | number>) => string
 
 /** The ad's settings fields this card edits (the namespace's full schema). */
 export interface AdSettings {
@@ -38,6 +41,10 @@ export interface AdSettings {
   right?: number
   /** Inset from the viewport's bottom edge (px). Updated by drag-and-drop. */
   bottom?: number
+  /** Auto-rotation interval in milliseconds. The widget's
+   *  setInterval for `/api/ad/next` uses this value when set;
+   *  otherwise the client default (15 s) applies. 1s..10min. */
+  rotationMs?: number
   /** Active source id. */
   activeSourceId?: string
 }
@@ -50,19 +57,25 @@ export interface AdSettingsCardState extends CardShell {
   size: CardFieldState
   right: CardFieldState
   bottom: CardFieldState
+  rotationMs: CardFieldState
   activeSourceId: CardFieldState
   /** Source choices (registry ids + display names), loaded from the host. */
   sourceChoices: readonly { value: string; label: string }[]
 }
 
-/** The registration-side face the card's slot entry injects. */
+/** The registration-side face the card's slot entry injects.
+ *
+ * `hooks.adSettingsCard` is the snapshot store; the slot framework wraps it
+ * into a `useAdSettingsCard` selector hook on the section's props. The
+ * remaining members are the form's write actions, passed through verbatim. */
 export interface AdSettingsCardFace extends CardActions {
-  hooks?: {
-    /** Card snapshot bound by the renderer as useAdSettingsCard. */
+  hooks: {
+    /** Card snapshot bound by the renderer as useAdSettingsCard.
+     *  Typed as `SnapshotStore<AdSettingsCardState>`, which structurally
+     *  satisfies the slot framework's `HostObservable<T>` shape
+     *  (`getSnapshot` + `subscribe`). */
     adSettingsCard: SnapshotStore<AdSettingsCardState>
   }
-  /** Hook the slot renderer passes through to the card. */
-  useAdSettingsCard: <S>(sel: (s: AdSettingsCardState) => S) => S
 }
 
 interface AdSourceChoice {
@@ -102,6 +115,7 @@ export class AdSettingsCardController {
       numberField('size'),
       numberField('right'),
       numberField('bottom'),
+      numberField('rotationMs'),
       choiceField('activeSourceId', this.sourceChoices),
     ])
     this.store = this.form.bind(() => this.projection())
@@ -145,33 +159,20 @@ export class AdSettingsCardController {
       size: this.form.field('size'),
       right: this.form.field('right'),
       bottom: this.form.field('bottom'),
+      rotationMs: this.form.field('rotationMs'),
       activeSourceId: this.form.field('activeSourceId'),
       sourceChoices: this.sourceChoices.map(id => ({ value: id, label: this.sourceLabels.get(id) ?? id })),
     }
   }
 
   /**
-   * Build the face the card's slot registration injects.
-   *
-   * The face carries the `useAdSettingsCard` hook (a `useSyncExternalStore`
-   * wrapper) alongside the `CardActions` (`save`, `discard`, `edit`,
-   * `resetField`). The slot renderer passes the hook into the card as a
-   * prop, so the card reads the staged form via a real subscription
-   * rather than props drilling the snapshot.
+   * Build the face the card's slot registration injects. The slot framework
+   * promotes `hooks.adSettingsCard` to a `useAdSettingsCard` selector on
+   * the section's props (see `InjectFace` in dsh-client-ui-slots); the
+   * remaining keys are the form's write actions, passed through verbatim.
    */
-  inject(): AdSettingsCardFace & { useAdSettingsCard: <S>(sel: (s: AdSettingsCardState) => S) => S } {
-    const actions = this.form.actions()
-    const useAdSettingsCard = <S,>(sel: (s: AdSettingsCardState) => S): S => {
-      // The PluginSettingsCard uses a "selector" pattern (mirroring
-      // `useSyncExternalStore`). We rebuild the same API by binding
-      // `this.store.subscribe` and `this.store.getSnapshot` to React.
-      // Since we can't pull `useSyncExternalStore` here without React 18,
-      // we just call the selector on the current store value — re-renders
-      // are driven by the parent's re-render after `save`/`edit`.
-      void sel
-      return sel(this.projection()) as S
-    }
-    return { hooks: { adSettingsCard: this.store }, useAdSettingsCard, ...actions }
+  inject(): AdSettingsCardFace {
+    return { hooks: { adSettingsCard: this.store }, ...this.form.actions() }
   }
 
   /**
@@ -191,8 +192,15 @@ export class AdSettingsCardController {
 
 /** Props the renderer binds for the ad settings card. */
 export type AdSettingsCardProps = {
-  t: LocaleT
-} & AdSettingsCardFace
+  /** Locale t seat — provided by the parent section through the slot framework. */
+  t: (key: string, params?: Record<string, string | number>) => string
+  /** Selector hook bound by the section from the card's snapshot store. */
+  useAdSettingsCard: <S,>(sel: (s: AdSettingsCardState) => S) => S
+  save: () => void
+  discard: () => void
+  edit: (field: string, text: string) => void
+  resetField: (field: string) => void
+}
 
 /**
  * Render the ad settings card.
@@ -266,11 +274,13 @@ export function AdSettingsCard(props: AdSettingsCardProps) {
         onEdit={(text) => { props.edit('activeSourceId', text) }}
         onReset={() => { props.resetField('activeSourceId') }}
       />
-      <ValueField
+      <SizeField
         id="settings-ad-size"
         label={t('settings.size')}
         hint={t('settings.sizeHint')}
         numeric
+        min={200}
+        max={800}
         {...fieldProps}
         {...state.size}
         onEdit={(text) => { props.edit('size', text) }}
@@ -296,14 +306,33 @@ export function AdSettingsCard(props: AdSettingsCardProps) {
         onEdit={(text) => { props.edit('bottom', text) }}
         onReset={() => { props.resetField('bottom') }}
       />
+      <ValueField
+        id="settings-ad-rotation"
+        label={t('settings.rotation')}
+        hint={t('settings.rotationHint')}
+        numeric
+        {...fieldProps}
+        {...state.rotationMs}
+        onEdit={(text) => { props.edit('rotationMs', text) }}
+        onReset={() => { props.resetField('rotationMs') }}
+      />
     </PluginSettingsCard>
   )
 }
 
 /** Props the settings section binds for the ad card page. */
 export type AdSettingsSectionProps = {
-  t: LocaleT
-} & AdSettingsCardFace
+  /** Locale t seat — provided by the slot framework via `locale: 'ad'`. */
+  t: (key: string, params?: Record<string, string | number>) => string
+  /** Selector hook bound by the section from the card's snapshot store. */
+  useAdSettingsCard: <S,>(sel: (s: AdSettingsCardState) => S) => S
+  save: () => void
+  discard: () => void
+  edit: (field: string, text: string) => void
+  resetField: (field: string) => void
+  /** Close button provided by the settings shell. */
+  close: () => void
+}
 
 /** Render the ad settings card as a first-level settings page. */
 export function AdSettingsSection(props: AdSettingsSectionProps): ReactNode {

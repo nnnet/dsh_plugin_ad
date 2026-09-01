@@ -182,6 +182,65 @@
   right: 8px;
 }
 
+/* --- Resize handle (SE corner) ---------------------------------------- */
+
+/* The handle is a 32×32 hit target (iOS HIG / WCAG 2.5.5) with a
+ * visible 16×16 affordance centered inside. `pointer-events: auto`
+ * is the default, but we re-state it because the widget is built
+ * from a transparent surface and a future global `pointer-events:
+ * none` on the shell must not silently neuter the handle. The
+ * handle is a direct child of the widget root so the existing
+ * widget-level `pointerdown` handler never sees a press on the
+ * handle (we stopPropagation in React, defense-in-depth). */
+.resizeHandle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 32px;
+  height: 32px;
+  /* Center the 16×16 visual inside the 32×32 hit target. */
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: se-resize;
+  touch-action: none;
+  user-select: none;
+  /* Above the nav buttons (z=3) so the handle is reachable when the
+   * nav buttons are hovered. Below the widget's own focus ring. */
+  z-index: 4;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.resizeHandle:active,
+.resizeHandle[data-resizing="true"] {
+  cursor: nwse-resize;
+  color: var(--dsh-accent, #3a7afe);
+}
+
+.resizeHandle:focus-visible {
+  outline: 2px solid var(--dsh-accent, #3a7afe);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Three diagonal dots — the universal "you can resize me" affordance. */
+.resizeGlyph {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 0 1px 1px 0;
+  background-image:
+    linear-gradient(45deg, transparent 38%, currentColor 38%, currentColor 42%, transparent 42%),
+    linear-gradient(45deg, transparent 60%, currentColor 60%, currentColor 64%, transparent 64%),
+    linear-gradient(45deg, transparent 78%, currentColor 78%, currentColor 82%, transparent 82%);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+}
+
 .header {
   display: flex;
   align-items: center;

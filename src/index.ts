@@ -81,6 +81,9 @@ export interface AdWidgetSettings {
   size: number
   right: number
   bottom: number
+  /** Auto-rotation interval in milliseconds. Optional; the client
+   *  default (15 s) applies when omitted. Range 1000..600000. */
+  rotationMs?: number
   activeSourceId: string
 }
 
@@ -92,6 +95,7 @@ export function makeAdSettingsSchema(sourceIds: string[]): z<AdWidgetSettings> {
     size: z.number().min(200).max(800).default(360),
     right: z.number().min(0).max(200).default(24),
     bottom: z.number().min(0).max(200).default(20),
+    rotationMs: z.number().min(1000).max(600000).required(false),
     activeSourceId: sourceIds.length > 0
       ? z.union(sourceIds.map((id) => z.const(id))).default(sourceIds[0]!)
       : z.string(),
@@ -105,6 +109,7 @@ interface AdSettingsSection {
   size?: number
   right?: number
   bottom?: number
+  rotationMs?: number
   activeSourceId?: string
 }
 
@@ -136,7 +141,13 @@ function applyImpl(ctx: Context, config: AdConfig = {}): void {
   const syncRoutes = (): void => {
     const enabled = current().enabled ?? true
     service.setEnabled(enabled)
-    if (disposeRoutes === undefined && enabled) {
+
+    // Routes must remain registered while the widget is disabled. Removing
+    // them here creates a deadlock: after OFF the client can no longer read
+    // `/api/ad/sources` or call `/api/ad/display`, so it cannot observe an
+    // ON edit or recover the UI. `enabled` gates content serving in the
+    // client/service; it must never gate the settings transport itself.
+    if (disposeRoutes === undefined) {
       disposeRoutes = ctx.effect(
         () => {
           const disposers = routes.map((route) => ctx.webServer.register(route))
@@ -144,9 +155,6 @@ function applyImpl(ctx: Context, config: AdConfig = {}): void {
         },
         'ad: routes',
       )
-    } else if (disposeRoutes !== undefined && !enabled) {
-      disposeRoutes()
-      disposeRoutes = undefined
     }
   }
 
@@ -161,6 +169,7 @@ function applyImpl(ctx: Context, config: AdConfig = {}): void {
       size: base.size ?? 360,
       right: base.right ?? 24,
       bottom: base.bottom ?? 20,
+      rotationMs: base.rotationMs,
       activeSourceId: base.activeSourceId ?? '',
     },
     {
@@ -176,6 +185,7 @@ function applyImpl(ctx: Context, config: AdConfig = {}): void {
           size: s.size,
           right: s.right,
           bottom: s.bottom,
+          ...(s.rotationMs !== undefined ? { rotationMs: s.rotationMs } : {}),
         })
         if (s.activeSourceId !== undefined) service.setActiveSourceId(s.activeSourceId)
       },

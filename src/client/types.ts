@@ -44,6 +44,16 @@ export interface AdItemView {
   ctas?: AdCta[]
   details?: AdDetails
   clickUrl?: string
+  /**
+   * Server-computed per-item display time, in milliseconds. The
+   * widget's `setTimeout` chain uses this as the primary rotation
+   * timeout (see `pickRotationMs` in `src/display-time.ts`).
+   * For video items the browser refines to the actual
+   * `<video>.duration` clamped to `minVideoMs..maxVideoMs` once
+   * `loadedmetadata` fires; until then this source-default value
+   * is the timer.
+   */
+  displayMs?: number
 }
 
 export interface SourceView {
@@ -87,6 +97,10 @@ export interface DisplayView {
   size: number
   right: number
   bottom: number
+  /** Auto-rotation interval in milliseconds. Omitted when the host
+   *  doesn't override the default (15 000 ms). Editable from
+   *  AdSettingsCard; consumed by AdWidget to drive `setInterval`. */
+  rotationMs?: number
 }
 
 /** Response shape of `/api/ad/sources` — sources + current display settings. */

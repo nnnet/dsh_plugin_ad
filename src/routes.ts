@@ -13,6 +13,7 @@ import { readJsonBody, writeJson } from './http.ts'
 import { API_PREFIX, JSON_BODY_MAX_BYTES } from './constants.ts'
 import { ERRORS } from './messages.ts'
 import { trimHistory } from './service.ts'
+import { DEFAULT_DISPLAY_MS, resolveDisplayTime } from './display-time.ts'
 
 /** Browser-facing base path of the ad API. */
 export const AD_API_PREFIX = API_PREFIX
@@ -105,13 +106,32 @@ export function makeAdRoutes(deps: { service: AdService; ctx: Context }): WebRou
     postRoute(AD_API_PREFIX + '/display', (body) => {
       const display: Record<string, unknown> = {}
       if (typeof body.visible === 'boolean') display['visible'] = body.visible
-      if (typeof body.enabled === 'boolean') display['enabled'] = body.enabled
+      if (typeof body.enabled === 'boolean') {
+        display['enabled'] = body.enabled
+        // Keep the host master flag in sync with the display mutation.
+        // Routes remain registered while disabled, so this is the recovery
+        // path that makes an OFF -> ON transition possible without restart.
+        service.setEnabled(body.enabled)
+      }
       if (typeof body.decorationEnabled === 'boolean') display['decorationEnabled'] = body.decorationEnabled
       if (typeof body.size === 'number') display['size'] = body.size
       if (typeof body.right === 'number') display['right'] = body.right
       if (typeof body.bottom === 'number') display['bottom'] = body.bottom
+      if (typeof body.rotationMs === 'number') display['rotationMs'] = body.rotationMs
       service.setDisplay(display as Partial<Parameters<AdService['setDisplay']>[0]>)
       return Promise.resolve({ ok: true, display: service.getDisplay() })
+    }),
+
+    // Source picker write: switch the active source from the widget's
+    // hover-revealed <select>. The widget's 5s /api/ad/sources poll will
+    // pick up the new value on the next tick; this endpoint is the
+    // immediate commit so the widget doesn't rotate through the
+    // previous source for a few seconds after a switch.
+    postRoute(AD_API_PREFIX + '/source', (body) => {
+      if (typeof body.sourceId === 'string' && body.sourceId !== '') {
+        service.setActiveSourceId(body.sourceId)
+      }
+      return Promise.resolve({ ok: true, activeSourceId: service.activeId() })
     }),
 
     // DEBUG: feed cache introspection. Returns { id, items, lastError }
@@ -135,10 +155,29 @@ export function makeAdRoutes(deps: { service: AdService; ctx: Context }): WebRou
     postRoute(AD_API_PREFIX + '/next', (body) => {
       const sourceId = readSourceId(body, service.defaultSourceId())
       if (sourceId === undefined) return Promise.reject(new Error(ERRORS.noSourcesConfigured))
-      const item = service.nextItem(sourceId, readRuntime(body))
+      // `delta` controls direction: +1 (default, used by the rotation
+      // timer and the next button), -1 (prev button), 0 (re-show
+      // the current item). Anything that isn't an integer falls back
+      // to +1 so a malformed client never freezes the rotation.
+      const rawDelta = (body as { delta?: unknown } | undefined)?.delta
+      const delta = typeof rawDelta === 'number' && Number.isInteger(rawDelta) ? rawDelta : 1
+      const item = service.nextItem(sourceId, readRuntime(body), delta)
       if (item === undefined) return Promise.resolve({ ok: true, item: null })
       const clickUrl = service.resolveClickThrough(sourceId, item)
-      return Promise.resolve({ ok: true, item: { ...item, clickUrl } })
+      // Per-source rotation timing: the server doesn't have access to
+      // `<video>.duration`, so the value it sends is the source's
+      // declared `displayMs` (the browser refines to the actual
+      // duration on `loadedmetadata`). We resolve the timing triple
+      // here so the client doesn't have to re-derive the defaults.
+      // The field travels ON the item, not at the top level, so the
+      // widget's `pickRotationMs(item, ...)` reads it from one place
+      // and a future cache eviction/load doesn't need to keep two
+      // synchronized fields.
+      const timing = resolveDisplayTime(service.getSource(sourceId) ?? {})
+      return Promise.resolve({
+        ok: true,
+        item: { ...item, clickUrl, displayMs: timing.displayMs },
+      })
     }),
 
     // Manual feed refresh (e.g. a "reload" affordance in the widget).

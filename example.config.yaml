@@ -103,39 +103,180 @@ sources:
     enabled: true
     contentTypes: [video]
 
-    # Host allowlist for both the static CDN and the click-through root.
+    # Host allowlist for both the static CDN (mp4) and the click-through
+    # messenger pages.
     allowHosts:
       - static.tyan.ai
       - tyan.ai
     allowPrivateNetwork: false
 
     # No `feed` — this source uses `staticItems` (one-shot, no polling).
-    # Each item is rendered as a muted-autoplay HTML5 video; click opens
-    # the tyan.ai root in a new tab.
+    # Each item is a (mp4, messenger-page) pair extracted from tyan.ai/en/:
+    #   * mediaUrl / media[0].url — the avatar-preview mp4 served from
+    #     static.tyan.ai (loaded as muted-autoplay HTML5 video)
+    #   * clickUrl — the per-character messenger page, opened in a new tab
+    #     when the user clicks the widget (same flow as a skin click)
+    #
+    # Both fields are required: the client renders <video src={mediaUrl}/>
+    # and SimpleCreative falls back to the first media[] entry if mediaUrl
+    # is missing. Setting both keeps the wire-shape consistent regardless
+    # of which code path the client uses.
     staticItems:
       - id: tyan-1
         type: video
-        title: "Tyan avatar 0643…0f3"
-        media:
-          - kind: video
-            url: "https://static.tyan.ai/avatars/0643e8b9d9a1eedd0e3eb0f220429bdf59e4a0f3.mp4"
-        clickUrl: "https://tyan.ai"
-      - id: tyan-2
-        type: video
-        title: "Tyan avatar 3d9d…090"
+        title: "Emily, 18"
+        mediaUrl: "https://static.tyan.ai/avatars/3d9dff10fe3d30660389d15b6d0e78eb5f1a7090.mp4"
         media:
           - kind: video
             url: "https://static.tyan.ai/avatars/3d9dff10fe3d30660389d15b6d0e78eb5f1a7090.mp4"
-        clickUrl: "https://tyan.ai"
-      - id: tyan-3
+        clickUrl: "https://tyan.ai/en/messenger?id=28979"
+      - id: tyan-2
         type: video
-        title: "Tyan avatar 0643…0f3 (B)"
+        title: "Nikki, 20"
+        mediaUrl: "https://static.tyan.ai/avatars/194340df7cbdfcb009eccb616b118623df96f66c.mp4"
         media:
           - kind: video
-            url: "https://static.tyan.ai/avatars/0643e8b9d9a1eedd0e3eb0f220429bdf59e4a0f3.mp4"
-        clickUrl: "https://tyan.ai"
+            url: "https://static.tyan.ai/avatars/194340df7cbdfcb009eccb616b118623df96f66c.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=23706"
+      - id: tyan-3
+        type: video
+        title: "Bella Mur, 27"
+        mediaUrl: "https://static.tyan.ai/avatars/78f87499497cd6c47d26c75ce974f13647ead933.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/78f87499497cd6c47d26c75ce974f13647ead933.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=22270"
+      - id: tyan-4
+        type: video
+        title: "Piper, 29"
+        mediaUrl: "https://static.tyan.ai/avatars/19a200f5e50a912e4e7cf731a237dfc144d01e00.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/19a200f5e50a912e4e7cf731a237dfc144d01e00.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=22243"
+      - id: tyan-5
+        type: video
+        title: "Mimi, 18"
+        mediaUrl: "https://static.tyan.ai/avatars/e985c101f07888afef2a1040f17a7f2fd8406713.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/e985c101f07888afef2a1040f17a7f2fd8406713.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=16359"
+      - id: tyan-6
+        type: video
+        title: "Lora, 25"
+        mediaUrl: "https://static.tyan.ai/avatars/beb3a1de7c9f92593adb6f08486858ef7d26a820.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/beb3a1de7c9f92593adb6f08486858ef7d26a820.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=19151"
+      - id: tyan-7
+        type: video
+        title: "Isabella, 24"
+        mediaUrl: "https://static.tyan.ai/avatars/8ecb0e6072b8bd8765e69e7e9b43c75043e9cef7.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/8ecb0e6072b8bd8765e69e7e9b43c75043e9cef7.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=1657"
+      - id: tyan-8
+        type: video
+        title: "Kitty, 18"
+        mediaUrl: "https://static.tyan.ai/avatars/d719c3173cf96652f3130aa9a3cc7f43549f5720.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/d719c3173cf96652f3130aa9a3cc7f43549f5720.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=21035"
+      - id: tyan-9
+        type: video
+        title: "Jolie, 45"
+        mediaUrl: "https://static.tyan.ai/avatars/67173f1d1989ac3905212f96caf1c3d5800680f0.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/67173f1d1989ac3905212f96caf1c3d5800680f0.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=4983"
+      - id: tyan-10
+        type: video
+        title: "Poppy, 18"
+        mediaUrl: "https://static.tyan.ai/avatars/61a5068b6ac83d0fc4b69eae8456b5a5364d284f.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/61a5068b6ac83d0fc4b69eae8456b5a5364d284f.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=33"
+      - id: tyan-11
+        type: video
+        title: "Hannah, 18"
+        mediaUrl: "https://static.tyan.ai/avatars/162a72abd642c330e6a69e3d73090a3c77d42fb8.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/162a72abd642c330e6a69e3d73090a3c77d42fb8.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=19509"
+      - id: tyan-12
+        type: video
+        title: "Sirin, 19"
+        mediaUrl: "https://static.tyan.ai/avatars/7f94e7d74664af52a3fd768dbe2ed9d25fe2297b.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/7f94e7d74664af52a3fd768dbe2ed9d25fe2297b.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=20327"
+      - id: tyan-13
+        type: video
+        title: "Fatima, 26"
+        mediaUrl: "https://static.tyan.ai/avatars/461a973fc119e059b0e6f6b0306a45968aef7e96.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/461a973fc119e059b0e6f6b0306a45968aef7e96.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=13780"
+      - id: tyan-14
+        type: video
+        title: "Sindy, 18"
+        mediaUrl: "https://static.tyan.ai/avatars/372b83cb729a837ee69dcb40f54925d80a283fb8.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/372b83cb729a837ee69dcb40f54925d80a283fb8.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=13796"
+      - id: tyan-15
+        type: video
+        title: "Tiffany, 32"
+        mediaUrl: "https://static.tyan.ai/avatars/cc689e4d47a1fd9e778c7384946c5c6f62550ea9.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/cc689e4d47a1fd9e778c7384946c5c6f62550ea9.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=16988"
+      - id: tyan-16
+        type: video
+        title: "Kwini Kim, 20"
+        mediaUrl: "https://static.tyan.ai/avatars/b56ee41bc05aae178c3644350ebb6917bab9d405.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/b56ee41bc05aae178c3644350ebb6917bab9d405.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=19082"
+      - id: tyan-17
+        type: video
+        title: "Mia, 20"
+        mediaUrl: "https://static.tyan.ai/avatars/e8d8fe931c3aa53cf2cff6317c20679edca7f23a.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/e8d8fe931c3aa53cf2cff6317c20679edca7f23a.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=2354"
+      - id: tyan-18
+        type: video
+        title: "Milka Way, 22"
+        mediaUrl: "https://static.tyan.ai/avatars/3ea982c93bf34f781f3199afc54b5f9c8f7863d9.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/3ea982c93bf34f781f3199afc54b5f9c8f7863d9.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=19083"
+      - id: tyan-19
+        type: video
+        title: "Sally, 38"
+        mediaUrl: "https://static.tyan.ai/avatars/0fc7978108e433781073e0fda87b2f15586065fb.mp4"
+        media:
+          - kind: video
+            url: "https://static.tyan.ai/avatars/0fc7978108e433781073e0fda87b2f15586065fb.mp4"
+        clickUrl: "https://tyan.ai/en/messenger?id=5211"
 
-    maxItems: 3
+    maxItems: 19
+    # Fallback used only if an item has no per-character clickUrl.
     clickThroughUrl: "https://tyan.ai"
 
     campaign:

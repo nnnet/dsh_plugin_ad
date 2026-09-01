@@ -17,7 +17,7 @@ function openClickThrough(url: string | undefined): void {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-export function SimpleCreative({ item, suppressClickRef, onClick: onClickProp, onVideoError: onVideoErrorProp }: {
+export function SimpleCreative({ item, suppressClickRef, onClick: onClickProp, onVideoError: onVideoErrorProp, onVideoLoadedMetadata }: {
   item: AdItemView
   /**
    * Set by the parent widget while a drag gesture is in progress. Every
@@ -34,6 +34,16 @@ export function SimpleCreative({ item, suppressClickRef, onClick: onClickProp, o
    *  (network/CORS/decode failure). The parent uses this to swap in a
    *  fallback message instead of leaving a black box. */
   onVideoError?: () => void
+  /**
+   * Called when the <video> element fires `loadedmetadata`. The
+   * argument is the raw clip duration in milliseconds (already
+   * multiplied from `<video>.duration` in seconds). The parent uses
+   * this to refine the rotation timer to the clip's real length
+   * via `clampDurationMs`. The callback is sync; it's called on
+   * every `loadedmetadata` (which is once per load in practice), and
+   * the parent is responsible for de-duplicating if needed.
+   */
+  onVideoLoadedMetadata?: (durationMs: number) => void
 }): React.ReactElement {
   const clickable = item.clickUrl !== undefined && item.clickUrl !== ''
   const onClick = (): void => {
@@ -64,6 +74,12 @@ export function SimpleCreative({ item, suppressClickRef, onClick: onClickProp, o
           onClick={stopAndMaybeClick}
           title={clickable ? t('ad.widget.clickHint') : undefined}
           onError={onVideoErrorProp}
+          onLoadedMetadata={(e) => {
+            const v = e.currentTarget
+            if (Number.isFinite(v.duration) && v.duration > 0) {
+              onVideoLoadedMetadata?.(v.duration * 1000)
+            }
+          }}
         />
       )
     case 'gif':
