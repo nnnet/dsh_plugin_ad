@@ -1,7 +1,6 @@
-# Spec: per-source `displayMs` with video-duration awareness
+# source-display-time Specification
 
 ## Purpose
-
 Auto-rotation today is a single global 15 000 ms timer. A 5-second
 video creative gets ten seconds of dead air after the clip ends; a
 30-second product video gets cut off mid-engagement. Per-source
@@ -9,7 +8,7 @@ video creative gets ten seconds of dead air after the clip ends; a
 for video items the actual `video.duration` becomes a clamped dynamic
 input so the rotation timer tracks the creative instead of fighting it.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: `displayMs` is a validated `AdSourceConfig` field
 
@@ -160,8 +159,6 @@ the client doesn't read the field).
 - **THEN** the request SHALL succeed identically to pre-change
   behavior; the widget SHALL rotate on the `WIDGET_ROTATION_MS`
   constant.
-
-## MODIFIED Requirements
 
 ### Requirement: `AdItemView` exposes the server-computed `displayMs`
 
