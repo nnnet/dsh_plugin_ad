@@ -201,6 +201,18 @@ export interface AdSourceConfig {
   /** How often to refresh the feed, in ms. Default 60000. */
   pollIntervalMs?: number
   /**
+   * How long a creative is shown before the next one rotates in.
+   * Default 15 000 ms (matches the client `WIDGET_ROTATION_MS`).
+   * Bounds 1 000..600 000. For video items the browser refines this
+   * to `clamp(videoDurationMs, minVideoMs, maxVideoMs)` once
+   * `<video>.duration` is available.
+   */
+  displayMs?: number
+  /** Lower clamp for video items (ms). Default 4 000. */
+  minVideoMs?: number
+  /** Upper clamp for video items (ms). Default 120 000. */
+  maxVideoMs?: number
+  /**
    * Fully open passthrough bag for anything source-specific that doesn't
    * fit the modeled fields above (vendor flags, experiment ids, region
    * codes, ...). Forwarded verbatim to custom source adapters.
@@ -360,6 +372,9 @@ export const adSourceSchema: z<AdSourceConfig> = z.object({
   }),
   auth: credentialsSchema,
   pollIntervalMs: z.number().min(MIN_POLL_MS).max(MAX_POLL_MS).default(DEFAULT_POLL_MS),
+  displayMs: z.number().min(1_000).max(600_000),
+  minVideoMs: z.number().min(100).max(600_000),
+  maxVideoMs: z.number().min(100).max(600_000),
   extra: z.dict(z.any()).default({}),
 
   // v0.3 additions.

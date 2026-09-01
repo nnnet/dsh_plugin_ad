@@ -257,6 +257,98 @@ export function ValueField(props: FieldProps & {
   )
 }
 
+/**
+ * Slider + numeric-input combo for width-style fields. Both controls
+ * write the same draft via `props.onEdit` so a drag of the slider
+ * and a typed value flow through the same form-binding path. The
+ * slider is clamped to `[min, max]` (inclusive) and snaps to integer
+ * pixels; the numeric input accepts arbitrary typed text and lets
+ * the existing `invalid` state surface out-of-range / non-numeric
+ * values, exactly like `ValueField` does today.
+ *
+ * This is used by the widget-size control. The bounds are passed in
+ * by the caller (the ad card passes 200..800) so the same control
+ * can serve any future width-style setting without re-defining the
+ * limits here.
+ */
+export function SizeField(props: FieldProps & {
+  /** Inclusive lower bound for the slider. */
+  min: number
+  /** Inclusive upper bound for the slider. */
+  max: number
+  /** Hints a numeric keypad on the text input without narrowing the
+   *  control's accepted value set. */
+  numeric?: boolean
+  /** Placeholder shown while the draft is empty. */
+  placeholder?: string
+}) {
+  const { min, max } = props
+  // Parse the draft as a number so the slider can mirror whatever
+  // the user is currently typing. `NaN` is fine — the slider just
+  // falls back to `min` visually until the draft parses again.
+  const parsed = props.text === '' ? NaN : Number(props.text)
+  const sliderValue = Number.isFinite(parsed)
+    ? Math.max(min, Math.min(max, Math.round(parsed)))
+    : min
+  return (
+    <div className={css.field}>
+      <div className={css.head}>
+        <label className={css.label} htmlFor={props.id}>{props.label}</label>
+        {props.overridden
+          ? (
+            <span className={css.badges}>
+              <span className={css.badge}>{props.overriddenLabel}</span>
+              <button
+                type="button"
+                className={css.reset}
+                disabled={props.disabled}
+                onClick={props.onReset}
+              >
+                {props.resetLabel}
+              </button>
+            </span>
+          )
+          : null}
+      </div>
+      <div className={css.sizeRow}>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={1}
+          value={sliderValue}
+          disabled={props.disabled}
+          className={css.sizeSlider}
+          aria-label={props.label}
+          onChange={(event) => {
+            // Slider only emits integer values within [min, max],
+            // so no need to re-clamp on the way out. We still
+            // route through the form draft — never write a
+            // structural value directly — so Save/Discard and the
+            // invalid-state logic stay consistent with text edits.
+            const next = event.target.value
+            if (next !== props.text) props.onEdit(next)
+          }}
+        />
+        <input
+          id={props.id}
+          className={props.invalid ? css.inputInvalid : css.sizeInput}
+          type="text"
+          {...props.numeric === true ? { inputMode: 'numeric' as const } : {}}
+          {...props.invalid ? { 'aria-invalid': true } : {}}
+          value={props.text}
+          placeholder={props.placeholder ?? ''}
+          disabled={props.disabled}
+          onChange={(event) => { props.onEdit(event.target.value) }}
+        />
+      </div>
+      <p className={props.invalid ? css.invalid : css.hint}>
+        {props.invalid ? props.invalidLabel : props.hint}
+      </p>
+    </div>
+  )
+}
+
 const NON_SKIN_BODY_MARKERS = new Set(['dshSkinCenter', 'dshSidebarCollapsed'])
 // 检测使用使用皮肤，用了皮肤退回原生select样式，防止样式冲突。默认外观下使用优化后的select样式。
 function isSkinActive(): boolean {

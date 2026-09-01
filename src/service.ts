@@ -40,6 +40,10 @@ export interface AdDisplaySettings {
   size: number
   right: number
   bottom: number
+  /** Auto-rotation interval in milliseconds. Drives the widget's
+   *  `setInterval` on `/api/ad/next`. `undefined` means "use the
+   *  client-side default" (WIDGET_ROTATION_MS, currently 15 s). */
+  rotationMs?: number
 }
 
 const DEFAULT_DISPLAY: AdDisplaySettings = {
@@ -176,14 +180,44 @@ export class AdService extends Service {
   /**
    * Apply a display patch (called from the host settings onChange hook
    * and from the `/api/ad/display` route after a drag). Unknown fields
-   * are silently dropped; numeric fields are clamped to the same bounds
-   * the host's settings schema uses.
+   * are silently dropped; numeric fields are clamped where the bounds
+   * make sense.
+   *
+   * `right` / `bottom` are deliberately NOT clamped here. The settings
+   * schema does expose a 0..MAX_WIDGET_INSET (200 px) range for
+   * user-edited inset values in `config.ts`, but the *drag* position
+   * is bounded by the *viewport* (see AdWidget.onPointerMoveWidget)
+   * and the user's window can be any size — a 4K monitor is wider
+   * than 200 px. Clamping drag values to 200 here would cap the widget
+   * to a 200×200 area in the bottom-right corner regardless of
+   * viewport, which is the "limited space" bug. We accept any finite
+   * non-negative integer and let the client enforce the viewport
+   * bound on every move.
    */
   setDisplay(patch: Partial<AdDisplaySettings>): void {
     const next: AdDisplaySettings = { ...this.display, ...patch }
     next.size = clampInt(next.size, MIN_WIDGET_SIZE, MAX_WIDGET_SIZE, DEFAULT_WIDGET_SIZE)
-    next.right = clampInt(next.right, MIN_WIDGET_INSET, MAX_WIDGET_INSET, DEFAULT_WIDGET_INSET)
-    next.bottom = clampInt(next.bottom, MIN_WIDGET_INSET, MAX_WIDGET_INSET, DEFAULT_WIDGET_INSET)
+    if (typeof next.right === 'number' && Number.isFinite(next.right) && next.right >= 0) {
+      next.right = Math.round(next.right)
+    } else {
+      next.right = DEFAULT_WIDGET_INSET
+    }
+    if (typeof next.bottom === 'number' && Number.isFinite(next.bottom) && next.bottom >= 0) {
+      next.bottom = Math.round(next.bottom)
+    } else {
+      next.bottom = 20
+    }
+    // rotationMs: integer milliseconds, 1s..10min. Anything outside
+    // the band is dropped (undefined) so a malformed client doesn't
+    // freeze the widget on a 0-ms or year-long interval.
+    if (patch.rotationMs !== undefined) {
+      const v = patch.rotationMs
+      if (Number.isInteger(v) && v >= 1_000 && v <= 600_000) {
+        next.rotationMs = v
+      } else {
+        delete next.rotationMs
+      }
+    }
     this.display = next
   }
 
@@ -246,7 +280,12 @@ export class AdService extends Service {
     const raw = source.staticItems ?? []
     const cap = source.maxItems ?? DEFAULT_MAX_ITEMS
     const items = raw.slice(0, Math.min(cap, MAX_FEED_ITEMS))
-    this.cache.set(source.id, { items, cursor: 0, fetchedAt: Date.now() })
+    // Cursor starts at n-1 so the first +1 call shows items[0],
+    // preserving the original v0.6 rotation order (A, B, C, A, …).
+    // A -1 call from this state shows the last item, which matches
+    // user expectation ("there's nothing before the first").
+    const cursor = items.length > 0 ? items.length - 1 : 0
+    this.cache.set(source.id, { items, cursor, fetchedAt: Date.now() })
     this.itemCounts.set(source.id, items.length)
   }
 
@@ -262,7 +301,10 @@ export class AdService extends Service {
         source.maxResponseBytes,
       )
       const items = normalizeAdFeed(payload, source)
-      this.cache.set(sourceId, { items, cursor: 0, fetchedAt: Date.now() })
+      // Same convention as seedStaticItems: start at n-1 so the
+      // first +1 call shows items[0].
+      const cursor = items.length > 0 ? items.length - 1 : 0
+      this.cache.set(sourceId, { items, cursor, fetchedAt: Date.now() })
       this.itemCounts.set(sourceId, items.length)
     } catch (error) {
       const previous = this.cache.get(sourceId)
@@ -281,6 +323,18 @@ export class AdService extends Service {
   /** Whether a source is currently eligible to serve (frequency cap + targeting). */
   isEligible(sourceId: string, runtime: AdRuntimeContext = {}): boolean {
     return this.checkEligibility(this.sources.get(sourceId), runtime).eligible
+  }
+
+  /**
+   * Read the full source config for the given id, or `undefined` if
+   * the source is not registered. Used by the `/api/ad/next` route
+   * to resolve per-source display timing (`displayMs` /
+   * `minVideoMs` / `maxVideoMs`) without round-tripping through
+   * `listSources` (which is intentionally credential-free and
+   * stripped-down).
+   */
+  getSource(sourceId: string): AdSourceConfig | undefined {
+    return this.sources.get(sourceId)
   }
 
   /** Record one impression for the source, enforcing its frequency cap. */
@@ -315,21 +369,53 @@ export class AdService extends Service {
     return { eligible: true }
   }
 
-  /** Next item in the source's rotation, cycling back to the start at the end. */
-  nextItem(sourceId: string, runtime: AdRuntimeContext = {}): AdItem | undefined {
+  /**
+   * Return the next item in the source's rotation, cycling back to the
+   * start at the end. `delta` is the direction: `+1` advances
+   * forward, `-1` goes back, `0` returns the current item. Used
+   * by the widget's auto-rotation (delta=+1) and by the manual
+   * prev/next nav buttons (delta=±1).
+   *
+   * The cursor convention is "index of the last shown item". The
+   * cursor starts at `(n - 1) mod n` so the very first +1 call
+   * shows items[0] (preserving the original v0.6 rotation order:
+   * A, B, C, A, B, C). After a `delta` step:
+   *   readAt = (cursor + delta + n) % n
+   *   cursor = readAt
+   *
+   * Examples (items=['A','B','C'], starting cursor=2):
+   *   delta=+1 → shows 'A' (0, wrap), cursor=0
+   *   delta=+1 → shows 'B' (1), cursor=1
+   *   delta=+1 → shows 'C' (2), cursor=2
+   *   delta=-1 (from cursor=2) → shows 'B' (1), cursor=1
+   *   delta=-1 (from cursor=0) → shows 'C' (2, wrap), cursor=2
+   */
+  nextItem(sourceId: string, runtime: AdRuntimeContext = {}, delta: number = 1): AdItem | undefined {
     const cache = this.cache.get(sourceId)
     if (cache === undefined || cache.items.length === 0) return undefined
     if (!this.isEligible(sourceId, runtime)) return undefined
-    const item = cache.items[cache.cursor % cache.items.length]
-    cache.cursor += 1
+    const n = cache.items.length
+    const readAt = ((cache.cursor + delta) % n + n) % n
+    const item = cache.items[readAt]
+    cache.cursor = readAt
     this.recordImpression(sourceId)
     return item
   }
 
-  /** Resolve `{itemId}`/`{clickUrl}` placeholders in a source's click-through template. */
+  /**
+   * Resolve the URL the widget opens on click.
+   *
+   * Priority: per-item `item.clickUrl` first (e.g. a tyan.ai
+   * per-character messenger page or a marketplace item link produced
+   * by `normalizeMarketplaceItem`), then the source-level
+   * `clickThroughUrl` template (with `{itemId}` / `{clickUrl}`
+   * substitution for sources whose items don't carry their own
+   * destination URL).
+   */
   resolveClickThrough(sourceId: string, item: AdItem): string | undefined {
+    if (item.clickUrl !== undefined && item.clickUrl !== '') return item.clickUrl
     const source = this.sources.get(sourceId)
-    if (source?.clickThroughUrl === undefined) return item.clickUrl
+    if (source?.clickThroughUrl === undefined) return undefined
     return fillTemplate(source.clickThroughUrl, {
       itemId: encodeURIComponent(item.id),
       clickUrl: item.clickUrl ?? '',
