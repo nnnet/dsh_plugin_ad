@@ -40,13 +40,14 @@ import styles from './ad.module.css'
 
 const API_PREFIX = API_PATH
 
-async function adFetch<T>(path: string, body?: unknown): Promise<T> {
+async function adFetch<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, body === undefined
     ? {}
     : {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
+        signal,
       })
   return response.json() as Promise<T>
 }
@@ -100,6 +101,110 @@ export function AdWidget(): React.ReactElement {
   // request on every poll.
   const fetchedForSourceRef = useRef<string | null>(null)
 
+  /**
+   * Monotonic counter for in-flight `/api/ad/next` requests. Every
+   * call (manual goRelative, source-change effect, fetchDisplay
+   * kick-off, rotation tick) bumps the seq and remembers it. When
+   * the response lands, we compare against the *current* seq and
+   * drop the result if a newer request has started. Without this,
+   * the user-reported "prev/next stop working randomly" bug fires:
+   * the rotation-effect fetchNext and a manual goRelative race each
+   * other, and whichever lands second wins; if the user clicked
+   * `›` right as a source-change effect fired, the effect's bare
+   * (no-delta) response arrives second and overwrites the new item
+   * the user actually wanted. Pair with `nextAbortRef` so the
+   * superseded fetch is also aborted (saves bandwidth + eliminates
+   * the impression POST the server would otherwise log for a
+   * creative the user never saw).
+   */
+  const nextRequestSeqRef = useRef(0)
+  const nextAbortRef = useRef<AbortController | null>(null)
+  /**
+   * Ref-mirror of `sourceId` for use inside the rotation tick
+   * closure. The rotation effect schedules a setTimeout that may
+   * fire long after the effect's render snapshot — a sources poll
+   * can change `sourceId` in between, and reading the stale
+   * closure value would bill the rotation tick against the old
+   * source. Same pattern `dragPosRef` / `resizeSizeRef` use for
+   * pointer-event closures.
+   */
+  const sourceIdRef = useRef<string | undefined>(undefined)
+  useEffect(() => { sourceIdRef.current = sourceId }, [sourceId])
+
+  /**
+   * Fire a `/api/ad/next` request and apply the result to the
+   * current item, but only if no newer request has started in the
+   * meantime. Centralizes the seq-bump + abort-prev + drop-stale +
+   * impression logic so every caller (manual prev/next, rotation
+   * tick, source-change effect, fetchDisplay kick-off) shares the
+   * exact same race-resolution. Without this helper the four call
+   * sites each had their own copy of the fetch block, and any
+   * drift between them re-introduced the "buttons stop working
+   * randomly" regression.
+   *
+   * `delta` is the OpenSpec prev/next signal (`-1` / `+1` / omitted);
+   * it flows through to the server unchanged. The caller passes the
+   * `sourceId` it wants the request to be billed against — passing
+   * the current `sourceId` from closure would silently use a stale
+   * value if a host-driven source switch had just landed, so we
+   * accept it as a parameter and let each caller decide.
+   */
+  const requestNext = useCallback((sid: string | undefined, delta?: -1 | 1): void => {
+    // Cancel any in-flight request — the response, when it lands,
+    // will see a stale seq and drop. Aborting also releases the
+    // socket so the network isn't double-paying for the doomed call.
+    if (nextAbortRef.current !== null) {
+      nextAbortRef.current.abort()
+    }
+    const controller = new AbortController()
+    nextAbortRef.current = controller
+    const seq = ++nextRequestSeqRef.current
+
+    const body: Record<string, unknown> = { ...runtimeContext() }
+    if (sid !== undefined) body.sourceId = sid
+    if (delta !== undefined) body.delta = delta
+
+    adFetch<{ ok: true; item: AdItemView | null } | { ok: false; error: string }>(
+      API_PREFIX + '/next',
+      body,
+      controller.signal,
+    ).then((res) => {
+      // Stale-response guard. If a newer request has been issued
+      // (seq bumped) or this request was aborted, drop the result
+      // without touching `item`. The next/newer response will set
+      // `item` instead. This is the line that fixes the
+      // "prev/next don't do anything after switching back from
+      // another plugin" bug: a sources-poll-driven effect fetch
+      // races the manual goRelative, the bare /next from the
+      // effect used to land second and clobber the manual item.
+      if (seq !== nextRequestSeqRef.current) return
+      nextAbortRef.current = null
+      if (res.ok) {
+        setItem(res.item)
+        if (res.item !== null) {
+          void fetch(API_PREFIX + '/impression', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ sourceId: sid, itemId: res.item.id }),
+          }).catch(() => {})
+        } else {
+          console.info('[dsh-ad] /next returned no item for source:', sid)
+        }
+      } else {
+        console.info('[dsh-ad] /next returned error:', res.error)
+      }
+    }, (err: unknown) => {
+      // AbortError is the expected path for a superseded request —
+      // silent. Anything else is a real network failure; we drop
+      // `item` to null so the next retry surfaces the empty
+      // placeholder instead of showing a stale creative.
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (seq !== nextRequestSeqRef.current) return
+      nextAbortRef.current = null
+      console.info('[dsh-ad] /next fetch rejected for source:', sid, err)
+    })
+  }, [])
+
   const fetchDisplay = useCallback((): void => {
     adFetch<SourcesResponse>(API_PREFIX + '/sources', { ...runtimeContext() }).then((res) => {
       const list = res.sources ?? []
@@ -125,33 +230,13 @@ export function AdWidget(): React.ReactElement {
         && fetchedForSourceRef.current !== targetSource
       ) {
         fetchedForSourceRef.current = targetSource
-        // Reuse the same fetchNext the effect calls. We can't go
-        // through the effect itself (the state hasn't propagated
-        // yet — the effect is scheduled for the *next* render), so
-        // fire it imperatively. The body reads `sourceId` from the
-        // closure, but the body only needs it for the request body
-        // and the impression call — using the resolved target
-        // directly is equivalent and avoids a one-tick stale read.
-        const sid = targetSource
-        adFetch<{ ok: true; item: AdItemView | null } | { ok: false; error: string }>(
-          API_PREFIX + '/next',
-          { sourceId: sid, ...runtimeContext() },
-        ).then((res2) => {
-          if (res2.ok) {
-            setItem(res2.item)
-            if (res2.item !== null) {
-              void fetch(API_PREFIX + '/impression', {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ sourceId: sid, itemId: res2.item.id }),
-              }).catch(() => {})
-            } else {
-              console.info('[dsh-ad] /next returned no item for source:', sid)
-            }
-          } else {
-            console.info('[dsh-ad] /next returned error:', res2.error)
-          }
-        }, () => { console.info('[dsh-ad] /next fetch rejected for source:', sid) })
+        // Fire the same `requestNext` the effect uses, but with the
+        // just-resolved target source directly — the effect won't
+        // see the new `sourceId` until the next render, so the
+        // imperative call is what makes the item land in the first
+        // poll cycle (see `fetchedForSourceRef` for the full
+        // "buttons don't work for 20 s" story).
+        requestNext(targetSource)
       }
       if (res.display !== undefined) {
         setDisplay((prev) => {
@@ -220,31 +305,16 @@ export function AdWidget(): React.ReactElement {
 
   // --- Item rotation ------------------------------------------------------
 
-  const fetchNext = (): void => {
-    adFetch<{ ok: true; item: AdItemView | null } | { ok: false; error: string }>(
-      API_PREFIX + '/next',
-      sourceId === undefined ? { ...runtimeContext() } : { sourceId, ...runtimeContext() },
-    ).then((res) => {
-      if (res.ok) {
-        setItem(res.item)
-        if (res.item !== null) {
-          void fetch(API_PREFIX + '/impression', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ sourceId, itemId: res.item.id }),
-          }).catch(() => {})
-        } else {
-          console.info('[dsh-ad] /next returned no item for source:', sourceId)
-        }
-      } else {
-        console.info('[dsh-ad] /next returned error:', res.error)
-      }
-    }, () => { console.info('[dsh-ad] /next fetch rejected for source:', sourceId) })
-  }
-
   useEffect(() => {
-    fetchNext()
-  }, [sourceId])
+    // Source-driven fetch: every time `sourceId` lands (initial
+    // mount, user picked a different source, host switched while
+    // the tab was hidden) we want a fresh item for that source.
+    // The same `requestNext` helper used by the manual prev/next
+    // and the rotation tick owns the seq/abort/drop-stale logic,
+    // so a poll-driven source switch that fires here can't
+    // overwrite a manual goRelative result the user already saw.
+    if (sourceId !== undefined) requestNext(sourceId)
+  }, [sourceId, requestNext])
 
   // Keep the "already fetched for this source" ref in sync with the
   // current `sourceId` so the direct kick-off in `fetchDisplay` only
@@ -254,6 +324,21 @@ export function AdWidget(): React.ReactElement {
   useEffect(() => {
     fetchedForSourceRef.current = sourceId ?? null
   }, [sourceId])
+
+  // Cancel any in-flight `/next` when the widget unmounts (route
+  // change, plugin disable, host hot-reload). Without this, a
+  // pending response can fire `setItem` after the component is
+  // gone and React 18 strict-mode will warn. The seq-guard in
+  // `requestNext` already prevents the visible "ghost" item from
+  // appearing, but the abort is the cleaner teardown.
+  useEffect(() => {
+    return () => {
+      if (nextAbortRef.current !== null) {
+        nextAbortRef.current.abort()
+        nextAbortRef.current = null
+      }
+    }
+  }, [])
 
   // --- Auto-rotation: per-item `setTimeout` chain ----------------------
   //
@@ -288,10 +373,19 @@ export function AdWidget(): React.ReactElement {
     const initialMs = pickRotationMs(item, display.rotationMs, WIDGET_ROTATION_MS)
     rotationTimerRef.current = window.setTimeout(() => {
       rotationTimerRef.current = null
-      fetchNext()
+      // Read the source id from a ref-mirror so the rotation tick
+      // carries the *current* source even if the effect was
+      // scheduled before a sources-poll-driven switch landed.
+      // Without the ref, a late rotation would fire against a
+      // stale source id and the response would be dropped by the
+      // `requestNext` helper's seq guard — looking like "the
+      // widget stopped rotating". The `requestNext` helper
+      // already owns the race-resolution, so we just hand it the
+      // current source.
+      requestNext(sourceIdRef.current)
     }, initialMs)
     return () => { cancelRotationTimer() }
-  }, [item?.id, item?.displayMs, display.rotationMs])
+  }, [item?.id, item?.displayMs, display.rotationMs, requestNext])
 
   /**
    * Re-derive the rotation timer from the just-loaded `<video>`
@@ -325,22 +419,16 @@ export function AdWidget(): React.ReactElement {
   /**
    * Manually step the rotation by `delta` items (±1) without waiting
    * for the auto-rotation timer. Used by the prev/next nav buttons.
-   * Skips the impression fetch — the server records the impression
-   * on `nextItem` itself, so the manual call counts as a normal
-   * rotation tick from the host's perspective.
+   * Goes through the shared `requestNext` so a manual click and a
+   * concurrent source-change effect share the same race-resolution:
+   * whichever seq lands last wins, the other is dropped. The
+   * `sourceId` is read from the callback's `useCallback` deps, so
+   * the request always carries the freshly-rendered source even
+   * if a sources poll updated it a tick earlier.
    */
   const goRelative = useCallback((delta: -1 | 1): void => {
-    adFetch<{ ok: true; item: AdItemView | null } | { ok: false; error: string }>(
-      API_PREFIX + '/next',
-      { sourceId, delta, ...runtimeContext() },
-    ).then((res) => {
-      if (res.ok) {
-        setItem(res.item)
-      } else {
-        console.info('[dsh-ad] /next returned error:', res.error)
-      }
-    }, () => { console.info('[dsh-ad] /next fetch rejected for source:', sourceId) })
-  }, [sourceId])
+    requestNext(sourceId, delta)
+  }, [sourceId, requestNext])
 
   useEffect(() => {
     setVideoError(false)
